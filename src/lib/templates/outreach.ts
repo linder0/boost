@@ -1,0 +1,43 @@
+import { Event, Vendor } from '@/types/database'
+import { format } from 'date-fns'
+
+export function generateOutreachEmail(event: Event, vendor: Vendor): string {
+  const dates = event.preferred_dates
+    .map((d, idx) => `${idx + 1}. ${format(new Date(d.date), 'MMMM d, yyyy')}`)
+    .join('\n')
+
+  const constraints: string[] = []
+  if (event.constraints.ada) constraints.push('ADA accessible')
+  if (event.constraints.alcohol) constraints.push('Alcohol license')
+  if (event.constraints.indoor_outdoor && event.constraints.indoor_outdoor !== 'either') {
+    constraints.push(`${event.constraints.indoor_outdoor} space`)
+  }
+
+  return `Hi ${vendor.name} team,
+
+I'm planning a ${event.name} in ${event.city} and I'm reaching out to check your availability and pricing.
+
+Event Details:
+- Expected attendance: ${event.headcount} guests
+- Preferred dates (in order of preference):
+${dates}
+- Budget range: ${event.venue_budget_ceiling > 0 ? `$${event.venue_budget_ceiling.toLocaleString()} for venue` : `$${event.total_budget.toLocaleString()} total`}
+${constraints.length > 0 ? `- Requirements: ${constraints.join(', ')}` : ''}
+
+Could you please confirm:
+1. Availability for any of the dates listed above
+2. Your pricing for a group of ${event.headcount}
+3. What's included in your standard package
+
+I'm hoping to make a decision within the next week, so a quick response would be greatly appreciated.
+
+Best regards,
+Event Planning Team
+
+---
+This is an automated inquiry. If you have any questions or need clarification, please reply to this email.`
+}
+
+export function generateOutreachSubject(event: Event): string {
+  return `Inquiry: ${event.name} - ${event.headcount} guests in ${event.city}`
+}
