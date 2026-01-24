@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { format } from "date-fns"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -10,6 +11,36 @@ export function cn(...inputs: ClassValue[]) {
  */
 export function formatCurrency(amount: number): string {
   return `$${amount.toLocaleString()}`
+}
+
+/**
+ * Format preferred dates for display in outreach emails
+ */
+export function formatPreferredDates(dates: { date: string; rank: number }[]): string {
+  return dates
+    .map((d, idx) => `${idx + 1}. ${format(new Date(d.date), 'MMMM d, yyyy')}`)
+    .join('\n')
+}
+
+/**
+ * Build a list of event constraint descriptions for emails
+ */
+export function buildConstraintsList(constraints: {
+  ada?: boolean
+  alcohol?: boolean
+  indoor_outdoor?: 'indoor' | 'outdoor' | 'either'
+  venue_types?: string[]
+}): string[] {
+  const list: string[] = []
+  if (constraints.ada) list.push('ADA accessible')
+  if (constraints.alcohol) list.push('alcohol service')
+  if (constraints.indoor_outdoor && constraints.indoor_outdoor !== 'either') {
+    list.push(`${constraints.indoor_outdoor} space preferred`)
+  }
+  if (constraints.venue_types?.length) {
+    list.push(`venue type: ${constraints.venue_types.join(', ')}`)
+  }
+  return list
 }
 
 /**

@@ -58,6 +58,9 @@ export async function createEvent(data: {
       external_vendors_allowed?: boolean
     }
   }
+  location_address?: string | null
+  location_lat?: number | null
+  location_lng?: number | null
 }) {
   const { supabase, user } = await getAuthenticatedClient()
 

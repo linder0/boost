@@ -1,6 +1,7 @@
 import { createServerClient, SupabaseClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { User } from '@supabase/supabase-js'
+import { Event } from '@/types/database'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -47,4 +48,44 @@ export async function getAuthenticatedClient(): Promise<{
   }
 
   return { supabase, user }
+}
+
+/**
+ * Verifies the user owns the specified event.
+ * Returns the full event data if authorized, throws otherwise.
+ */
+export async function verifyEventOwnership(
+  supabase: SupabaseClient,
+  eventId: string,
+  userId: string
+): Promise<Event> {
+  const { data: event, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('id', eventId)
+    .eq('user_id', userId)
+    .single()
+
+  if (error || !event) {
+    throw new Error('Event not found or unauthorized')
+  }
+
+  return event as Event
+}
+
+/**
+ * Creates vendor threads for the given vendor IDs.
+ * Used after creating vendors to initialize their communication threads.
+ */
+export async function createVendorThreads(
+  supabase: SupabaseClient,
+  vendorIds: string[]
+): Promise<void> {
+  const threadsToInsert = vendorIds.map((vendorId) => ({
+    vendor_id: vendorId,
+    status: 'NOT_CONTACTED' as const,
+    next_action: 'AUTO' as const,
+  }))
+
+  await supabase.from('vendor_threads').insert(threadsToInsert)
 }

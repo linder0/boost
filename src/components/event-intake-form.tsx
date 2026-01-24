@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from './ui/select'
+import { LocationPicker, LocationData } from './mapbox'
 import { createEvent, updateEventSettings } from '@/app/actions/events'
 import { Event } from '@/types/database'
 
@@ -63,6 +64,15 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
   const [externalVendors, setExternalVendors] = useState(
     event?.constraints?.catering?.external_vendors_allowed || false
   )
+  const [location, setLocation] = useState<LocationData | null>(
+    event?.location_lat && event?.location_lng
+      ? {
+          address: event.location_address || '',
+          lat: event.location_lat,
+          lng: event.location_lng,
+        }
+      : null
+  )
 
   const addDate = () => {
     setDates([...dates, { date: '', rank: dates.length + 1 }])
@@ -106,7 +116,7 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
         budget_flexibility_percent: 0,
         constraints: {
           neighborhood: neighborhood.trim() || undefined,
-          time_frame: timeFrame || undefined,
+          time_frame: (timeFrame || undefined) as 'morning' | 'afternoon' | 'evening' | 'night' | undefined,
           venue_types: venueTypes.length > 0 ? venueTypes : undefined,
           indoor_outdoor: indoorOutdoor,
           catering: {
@@ -115,6 +125,9 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
             external_vendors_allowed: externalVendors,
           },
         },
+        location_address: location?.address || null,
+        location_lat: location?.lat || null,
+        location_lng: location?.lng || null,
       }
 
       if (isEditMode && event) {
@@ -125,7 +138,8 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
         setTimeout(() => setSaved(false), 2000)
       } else {
         const newEvent = await createEvent(eventData)
-        router.push(`/events/${newEvent.id}/vendors`)
+        // Redirect to venue discovery for automated suggestions
+        router.push(`/events/${newEvent.id}/vendors/discover`)
       }
     } catch (err: any) {
       setError(err.message || 'Failed to save event')
@@ -180,6 +194,13 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
               />
             </div>
           </div>
+
+          <LocationPicker
+            value={location}
+            onChange={setLocation}
+            label="Event Location (optional)"
+            placeholder="Search for the event venue address..."
+          />
         </div>
 
         {/* Event Details */}

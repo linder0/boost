@@ -63,6 +63,9 @@ export interface Event {
       external_vendors_allowed?: boolean;
     };
   };
+  location_address?: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -73,6 +76,10 @@ export interface Vendor {
   name: string;
   category: string;
   contact_email: string;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  custom_message?: string | null;
   created_at: string;
   updated_at: string;
 }

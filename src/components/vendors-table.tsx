@@ -16,7 +16,7 @@ import { Badge } from './ui/badge'
 import { VendorWithThread, VendorStatus, DecisionOutcome, ConfidenceLevel } from '@/types/database'
 import { StatusBadge, DecisionBadge, ConfidenceBadge } from './status-badge'
 import { EmptyState } from './empty-state'
-import { updateVendor } from '@/app/actions/vendors'
+import { updateVendor, regenerateVendorMessage } from '@/app/actions/vendors'
 import { bulkStartOutreach } from '@/app/actions/threads'
 import { normalizeJoinResult } from '@/lib/utils'
 
@@ -30,6 +30,19 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
+
+  const handleRegenerateMessage = async (vendorId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setRegeneratingId(vendorId)
+    try {
+      await regenerateVendorMessage(vendorId)
+    } catch (error) {
+      console.error('Failed to regenerate message:', error)
+    } finally {
+      setRegeneratingId(null)
+    }
+  }
 
   const handleStartBulkOutreach = async () => {
     setLoading(true)
@@ -57,8 +70,12 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
       <EmptyState
         variant="dashed"
         title="No vendors yet"
-        description="Add vendors manually or import from CSV to get started"
+        description="Discover venues based on your event criteria or import from CSV"
         action={{
+          label: 'Discover Venues',
+          onClick: () => (window.location.href = `/events/${eventId}/vendors/discover`),
+        }}
+        secondaryAction={{
           label: 'Import CSV',
           onClick: () => (window.location.href = `/events/${eventId}/vendors/import`),
         }}
@@ -73,11 +90,17 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
         <div className="flex gap-2">
           <Button
             variant="outline"
+            onClick={() => (window.location.href = `/events/${eventId}/vendors/discover`)}
+          >
+            Discover More
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => (window.location.href = `/events/${eventId}/vendors/import`)}
           >
             Import CSV
           </Button>
-          <Button variant="outline" onClick={handleStartBulkOutreach} disabled={loading}>
+          <Button onClick={handleStartBulkOutreach} disabled={loading}>
             {loading ? 'Starting...' : 'Start Outreach (All)'}
           </Button>
         </div>
@@ -90,13 +113,10 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
               <TableHead>Vendor Name</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Contact Email</TableHead>
+              <TableHead>Message</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Availability</TableHead>
-              <TableHead>Quote</TableHead>
               <TableHead>Decision</TableHead>
               <TableHead>Confidence</TableHead>
-              <TableHead>Next Action</TableHead>
-              <TableHead>Reason</TableHead>
               <TableHead>Last Touch</TableHead>
             </TableRow>
           </TableHeader>
@@ -151,10 +171,26 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
                     )}
                   </TableCell>
                   <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className="max-w-[150px] truncate text-sm text-muted-foreground">
+                        {vendor.custom_message
+                          ? vendor.custom_message.substring(0, 40) + '...'
+                          : 'No message'}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={(e) => handleRegenerateMessage(vendor.id, e)}
+                        disabled={regeneratingId === vendor.id}
+                      >
+                        {regeneratingId === vendor.id ? '...' : '↻'}
+                      </Button>
+                    </div>
+                  </TableCell>
+                  <TableCell>
                     {thread && <StatusBadge status={thread.status as VendorStatus} />}
                   </TableCell>
-                  <TableCell>-</TableCell>
-                  <TableCell>-</TableCell>
                   <TableCell>
                     {thread?.decision && (
                       <DecisionBadge decision={thread.decision as DecisionOutcome} />
@@ -164,16 +200,6 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
                     {thread?.confidence && (
                       <ConfidenceBadge confidence={thread.confidence as ConfidenceLevel} />
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {thread?.next_action && (
-                      <Badge variant="outline">
-                        {thread.next_action.replace('_', ' ')}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-xs truncate">
-                    {thread?.reason || '-'}
                   </TableCell>
                   <TableCell>
                     {thread?.last_touch

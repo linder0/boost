@@ -26,8 +26,8 @@ export const sendOutreach = inngest.createFunction(
       return vendor
     })
 
-    // Generate email content
-    const emailBody = generateOutreachEmail(vendorData.events, vendorData)
+    // Use custom message if available, otherwise generate from template
+    const emailBody = vendorData.custom_message || generateOutreachEmail(vendorData.events, vendorData)
     const emailSubject = generateOutreachSubject(vendorData.events)
 
     // Send email via Gmail

@@ -1,0 +1,238 @@
+'use client'
+
+import { useRef, useEffect, useState } from 'react'
+
+export interface MapMarker {
+  id: string
+  lat: number
+  lng: number
+  label?: string
+  color?: string
+}
+
+interface MapboxMapProps {
+  center?: { lat: number; lng: number }
+  zoom?: number
+  markers?: MapMarker[]
+  interactive?: boolean
+  clickToSet?: boolean
+  onMapClick?: (coords: { lat: number; lng: number }) => void
+  onMarkerClick?: (markerId: string) => void
+  className?: string
+  height?: string
+}
+
+export function MapboxMap({
+  center = { lat: 40.7128, lng: -74.006 }, // Default to NYC
+  zoom = 12,
+  markers = [],
+  interactive = true,
+  clickToSet = false,
+  onMapClick,
+  onMarkerClick,
+  className = '',
+  height = '300px',
+}: MapboxMapProps) {
+  const mapContainer = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<any>(null)
+  const markersRef = useRef<any[]>([])
+  const mapboxglRef = useRef<any>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+
+  // Load mapbox-gl dynamically on client side
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!mapContainer.current) return
+    if (mapRef.current) return // Already initialized
+    if (!accessToken) return
+
+    let isMounted = true
+
+    const initMap = async () => {
+      try {
+        // Dynamically import mapbox-gl
+        const mapboxModule = await import('mapbox-gl')
+        const mapboxgl = mapboxModule.default
+        
+        // Import CSS
+        await import('mapbox-gl/dist/mapbox-gl.css')
+        
+        if (!isMounted || !mapContainer.current) return
+        
+        // Store reference
+        mapboxglRef.current = mapboxgl
+        
+        // Set access token
+        mapboxgl.accessToken = accessToken
+
+        // Create map
+        const map = new mapboxgl.Map({
+          container: mapContainer.current,
+          style: 'mapbox://styles/mapbox/streets-v12',
+          center: [center.lng, center.lat],
+          zoom: zoom,
+          interactive: interactive,
+        })
+
+        mapRef.current = map
+
+        map.on('load', () => {
+          if (isMounted) {
+            setMapReady(true)
+          }
+        })
+
+        map.on('error', (e: any) => {
+          const msg = e.error?.message || ''
+          if (msg.includes('Not Authorized') || msg.includes('Invalid Token')) {
+            setError('Invalid Mapbox token')
+          } else {
+            console.error('Mapbox error:', e.error)
+          }
+        })
+
+        // Add navigation controls if interactive
+        if (interactive) {
+          map.addControl(new mapboxgl.NavigationControl(), 'top-right')
+        }
+
+        // Handle click-to-set
+        if (clickToSet && onMapClick) {
+          map.on('click', (e: any) => {
+            onMapClick({
+              lat: e.lngLat.lat,
+              lng: e.lngLat.lng,
+            })
+          })
+          map.getCanvas().style.cursor = 'crosshair'
+        }
+      } catch (err) {
+        console.error('Failed to load Mapbox:', err)
+        if (isMounted) {
+          setError('Failed to load map')
+        }
+      }
+    }
+
+    initMap()
+
+    return () => {
+      isMounted = false
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
+    }
+  }, [accessToken, interactive, clickToSet])
+
+  // Update center when prop changes
+  useEffect(() => {
+    if (mapRef.current && mapReady) {
+      mapRef.current.flyTo({
+        center: [center.lng, center.lat],
+        zoom: zoom,
+        duration: 1000,
+      })
+    }
+  }, [center.lat, center.lng, zoom, mapReady])
+
+  // Update markers
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !mapboxglRef.current) return
+
+    const mapboxgl = mapboxglRef.current
+
+    // Remove existing markers
+    markersRef.current.forEach((marker) => marker.remove())
+    markersRef.current = []
+
+    // Add new markers
+    markers.forEach((markerData) => {
+      const el = document.createElement('div')
+      el.className = 'mapbox-marker'
+      el.style.backgroundColor = markerData.color || '#3b82f6'
+      el.style.width = '24px'
+      el.style.height = '24px'
+      el.style.borderRadius = '50%'
+      el.style.border = '3px solid white'
+      el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
+      el.style.cursor = 'pointer'
+
+      const marker = new mapboxgl.Marker(el)
+        .setLngLat([markerData.lng, markerData.lat])
+        .addTo(mapRef.current!)
+
+      // Add popup if label exists
+      if (markerData.label) {
+        const popup = new mapboxgl.Popup({ offset: 25 }).setText(markerData.label)
+        marker.setPopup(popup)
+      }
+
+      // Handle marker click
+      if (onMarkerClick) {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          onMarkerClick(markerData.id)
+        })
+      }
+
+      markersRef.current.push(marker)
+    })
+
+    // Fit bounds if multiple markers
+    if (markers.length > 1) {
+      const bounds = new mapboxgl.LngLatBounds()
+      markers.forEach((m) => bounds.extend([m.lng, m.lat]))
+      mapRef.current.fitBounds(bounds, {
+        padding: 50,
+        maxZoom: 15,
+        duration: 1000,
+      })
+    }
+  }, [markers, mapReady, onMarkerClick])
+
+  // No token configured
+  if (!accessToken) {
+    return (
+      <div
+        className={`flex flex-col items-center justify-center bg-muted rounded-md p-4 ${className}`}
+        style={{ height }}
+      >
+        <p className="text-sm font-medium text-muted-foreground mb-2">
+          Mapbox not configured
+        </p>
+        <p className="text-xs text-muted-foreground text-center">
+          Add NEXT_PUBLIC_MAPBOX_TOKEN to your .env.local file
+        </p>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div
+        className={`flex flex-col items-center justify-center bg-destructive/10 rounded-md p-4 ${className}`}
+        style={{ height }}
+      >
+        <p className="text-sm font-medium text-destructive mb-2">
+          Map Error
+        </p>
+        <p className="text-xs text-destructive/80 text-center">
+          {error}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={mapContainer}
+      className={`rounded-md overflow-hidden bg-muted ${className}`}
+      style={{ height }}
+    />
+  )
+}

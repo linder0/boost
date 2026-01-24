@@ -131,3 +131,6 @@ export async function bulkStartOutreach(eventId: string) {
   revalidatePath(`/events/${eventId}/vendors`)
   return { success: true, count: vendors.length }
 }
+
+// Alias for semantic clarity in venue discovery flow
+export const startOutreachForEvent = bulkStartOutreach

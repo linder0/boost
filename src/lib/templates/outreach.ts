@@ -1,15 +1,13 @@
 import { Event, Vendor } from '@/types/database'
-import { format } from 'date-fns'
+import { formatPreferredDates } from '@/lib/utils'
 
-export function generateOutreachEmail(event: Event, vendor: Vendor): string {
-  const dates = event.preferred_dates
-    .map((d, idx) => `${idx + 1}. ${format(new Date(d.date), 'MMMM d, yyyy')}`)
-    .join('\n')
+export function generateOutreachEmail(event: Event, vendor: Vendor | { name: string }): string {
+  const dates = formatPreferredDates(event.preferred_dates)
 
   const constraints: string[] = []
-  if (event.constraints.ada) constraints.push('ADA accessible')
-  if (event.constraints.alcohol) constraints.push('Alcohol license')
-  if (event.constraints.indoor_outdoor && event.constraints.indoor_outdoor !== 'either') {
+  if (event.constraints?.ada) constraints.push('ADA accessible')
+  if (event.constraints?.alcohol) constraints.push('Alcohol license')
+  if (event.constraints?.indoor_outdoor && event.constraints.indoor_outdoor !== 'either') {
     constraints.push(`${event.constraints.indoor_outdoor} space`)
   }
 
