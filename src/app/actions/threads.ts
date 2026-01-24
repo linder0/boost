@@ -1,19 +1,12 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedClient } from '@/lib/supabase/server'
 import { VendorStatus } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { inngest } from '@/inngest/client'
 
 export async function startOutreach(vendorId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase, user } = await getAuthenticatedClient()
 
   // Get vendor and verify ownership through event
   const { data: vendor, error: vendorError } = await supabase
@@ -43,14 +36,7 @@ export async function escalateThread(
   threadId: string,
   humanResponse: string
 ) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase, user } = await getAuthenticatedClient()
 
   // Get thread with vendor info
   const { data: thread, error: threadError } = await supabase
@@ -96,14 +82,7 @@ export async function escalateThread(
 }
 
 export async function updateThreadStatus(threadId: string, status: VendorStatus) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase } = await getAuthenticatedClient()
 
   const { data: thread, error } = await supabase
     .from('vendor_threads')
@@ -122,14 +101,7 @@ export async function updateThreadStatus(threadId: string, status: VendorStatus)
 }
 
 export async function bulkStartOutreach(eventId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase, user } = await getAuthenticatedClient()
 
   // Get all vendors with NOT_CONTACTED status
   const { data: vendors, error } = await supabase

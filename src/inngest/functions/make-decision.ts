@@ -2,6 +2,7 @@ import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
 import { evaluateVendor } from '@/lib/rules/decision-engine'
 import { sendEmail } from '@/lib/gmail/operations'
+import { normalizeJoinResult } from '@/lib/utils'
 
 export const makeDecision = inngest.createFunction(
   {
@@ -43,11 +44,9 @@ export const makeDecision = inngest.createFunction(
 
     // Run decision engine
     const decision = await step.run('evaluate-vendor', async () => {
-      const thread = Array.isArray(data.messages.vendor_threads)
-        ? data.messages.vendor_threads[0]
-        : data.messages.vendor_threads
-      const vendor = thread.vendors
-      const event = vendor.events
+      const thread = normalizeJoinResult(data.messages.vendor_threads)!
+      const vendor = normalizeJoinResult(thread.vendors)!
+      const event = normalizeJoinResult(vendor.events)!
 
       return evaluateVendor(data.raw_data, event)
     })
@@ -102,10 +101,8 @@ export const makeDecision = inngest.createFunction(
     await step.run('log-decision', async () => {
       const supabase = await createClient()
 
-      const thread = Array.isArray(data.messages.vendor_threads)
-        ? data.messages.vendor_threads[0]
-        : data.messages.vendor_threads
-      const vendor = thread.vendors
+      const thread = normalizeJoinResult(data.messages.vendor_threads)!
+      const vendor = normalizeJoinResult(thread.vendors)!
 
       await supabase.from('automation_logs').insert({
         event_id: vendor.event_id,
@@ -123,10 +120,9 @@ export const makeDecision = inngest.createFunction(
     // Send auto-response if applicable
     if (decision.shouldAutoRespond && decision.proposedNextAction) {
       await step.run('send-auto-response', async () => {
-        const thread = Array.isArray(data.messages.vendor_threads)
-          ? data.messages.vendor_threads[0]
-          : data.messages.vendor_threads
-        const vendor = thread.vendors
+        const thread = normalizeJoinResult(data.messages.vendor_threads)!
+        const vendor = normalizeJoinResult(thread.vendors)!
+        const eventData = normalizeJoinResult(vendor.events)!
         const supabase = await createClient()
 
         // Ensure we have a message body
@@ -137,7 +133,7 @@ export const makeDecision = inngest.createFunction(
         // Send email
         const sentMessage = await sendEmail(userId, {
           to: vendor.contact_email,
-          subject: `Re: Inquiry - ${vendor.events.name}`,
+          subject: `Re: Inquiry - ${eventData.name}`,
           body: decision.proposedNextAction,
           threadId: thread.gmail_thread_id || undefined,
         })
@@ -163,11 +159,12 @@ export const makeDecision = inngest.createFunction(
 
     // Trigger escalation notification if needed
     if (decision.shouldEscalate) {
+      const thread = normalizeJoinResult(data.messages.vendor_threads)!
       await step.sendEvent('escalation-triggered', {
         name: 'vendor.escalation',
         data: {
           threadId,
-          vendorId: data.messages.vendor_threads.vendor_id,
+          vendorId: thread.vendor_id,
           userId,
           reason: decision.reason,
         },

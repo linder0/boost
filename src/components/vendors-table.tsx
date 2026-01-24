@@ -18,6 +18,7 @@ import { StatusBadge, DecisionBadge, ConfidenceBadge } from './status-badge'
 import { EmptyState } from './empty-state'
 import { updateVendor } from '@/app/actions/vendors'
 import { bulkStartOutreach } from '@/app/actions/threads'
+import { normalizeJoinResult } from '@/lib/utils'
 
 interface VendorsTableProps {
   vendors: VendorWithThread[]
@@ -101,10 +102,8 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
           </TableHeader>
           <TableBody>
             {vendors.map((vendor) => {
-              const thread = Array.isArray(vendor.vendor_threads) 
-                ? vendor.vendor_threads[0] 
-                : vendor.vendor_threads;
-              const isEditing = editingId === vendor.id;
+              const thread = normalizeJoinResult(vendor.vendor_threads)
+              const isEditing = editingId === vendor.id
 
               return (
                 <TableRow

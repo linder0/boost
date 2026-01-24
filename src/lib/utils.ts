@@ -15,4 +15,25 @@ export function formatCurrency(amount: number): string {
 /**
  * Standard page container class for consistent layout
  */
-export const PAGE_CONTAINER_CLASS = "mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8"
+export const PAGE_CONTAINER_CLASS = "px-8 py-8"
+
+/**
+ * UUID validation regex - validates standard UUID v4 format
+ */
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Validates if a string is a valid UUID
+ */
+export function isValidUUID(id: string | null | undefined): boolean {
+  return !!id && UUID_REGEX.test(id)
+}
+
+/**
+ * Normalizes a Supabase join result that could be an array or single object.
+ * Supabase returns arrays for many-to-many, but often we just need the first item.
+ */
+export function normalizeJoinResult<T>(result: T | T[] | null | undefined): T | null {
+  if (!result) return null
+  return Array.isArray(result) ? result[0] ?? null : result
+}

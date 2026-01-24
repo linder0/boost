@@ -54,6 +54,14 @@ export interface Event {
     alcohol?: boolean;
     noise?: boolean;
     indoor_outdoor?: 'indoor' | 'outdoor' | 'either';
+    neighborhood?: string;
+    time_frame?: 'morning' | 'afternoon' | 'evening' | 'night';
+    venue_types?: string[];
+    catering?: {
+      food?: boolean;
+      drinks?: boolean;
+      external_vendors_allowed?: boolean;
+    };
   };
   created_at: string;
   updated_at: string;

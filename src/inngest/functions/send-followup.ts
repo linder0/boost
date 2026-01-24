@@ -2,6 +2,7 @@ import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
 import { sendEmail } from '@/lib/gmail/operations'
 import { generateFollowUp1, generateBreakupEmail, getFollowUpSubject } from '@/lib/templates/followups'
+import { normalizeJoinResult } from '@/lib/utils'
 
 export const sendFollowUp = inngest.createFunction(
   {
@@ -46,12 +47,8 @@ export const sendFollowUp = inngest.createFunction(
       }
     }
 
-    const vendor = Array.isArray(threadStatus.vendors) 
-      ? threadStatus.vendors[0] 
-      : threadStatus.vendors
-    const eventData = Array.isArray(vendor.events)
-      ? vendor.events[0]
-      : vendor.events
+    const vendor = normalizeJoinResult(threadStatus.vendors)!
+    const eventData = normalizeJoinResult(vendor.events)!
 
     // Determine which follow-up to send
     const isBreakup = attempt === 2 || threadStatus.follow_up_count === 1

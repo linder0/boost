@@ -1,8 +1,9 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedClient } from '@/lib/supabase/server'
 import { Vendor, VendorWithThread } from '@/types/database'
 import { revalidatePath } from 'next/cache'
+import { isValidUUID } from '@/lib/utils'
 
 export async function createVendor(
   eventId: string,
@@ -12,14 +13,7 @@ export async function createVendor(
     contact_email: string
   }
 ) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase, user } = await getAuthenticatedClient()
 
   // Verify event ownership
   const { data: event } = await supabase
@@ -62,14 +56,7 @@ export async function bulkCreateVendors(
   eventId: string,
   vendors: { name: string; category: string; contact_email: string }[]
 ) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase, user } = await getAuthenticatedClient()
 
   // Verify event ownership
   const { data: event } = await supabase
@@ -112,14 +99,12 @@ export async function bulkCreateVendors(
 }
 
 export async function getVendorsByEvent(eventId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
+  if (!isValidUUID(eventId)) {
+    console.warn('Invalid event ID format:', eventId)
+    return [] as VendorWithThread[]
   }
+
+  const { supabase } = await getAuthenticatedClient()
 
   const { data: vendors, error } = await supabase
     .from('vendors')
@@ -127,23 +112,16 @@ export async function getVendorsByEvent(eventId: string) {
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
 
-  if (error) {
+  if (error && Object.keys(error).length > 0) {
     console.error('Error fetching vendors:', error)
     throw new Error('Failed to fetch vendors')
   }
 
-  return vendors as VendorWithThread[]
+  return (vendors ?? []) as VendorWithThread[]
 }
 
 export async function getVendorDetail(vendorId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase } = await getAuthenticatedClient()
 
   const { data: vendor, error } = await supabase
     .from('vendors')
@@ -172,14 +150,7 @@ export async function updateVendor(
   vendorId: string,
   data: Partial<Pick<Vendor, 'name' | 'category' | 'contact_email'>>
 ) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase } = await getAuthenticatedClient()
 
   const { data: vendor, error } = await supabase
     .from('vendors')
@@ -197,14 +168,7 @@ export async function updateVendor(
 }
 
 export async function deleteVendor(vendorId: string) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
-  }
+  const { supabase } = await getAuthenticatedClient()
 
   const { error } = await supabase.from('vendors').delete().eq('id', vendorId)
 

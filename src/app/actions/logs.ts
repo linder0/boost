@@ -1,20 +1,19 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getAuthenticatedClient } from '@/lib/supabase/server'
 import { AutomationLog, LogEventType } from '@/types/database'
+import { isValidUUID } from '@/lib/utils'
 
 export async function getAutomationLogs(
   eventId: string,
   filterType?: LogEventType
 ) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    throw new Error('Not authenticated')
+  if (!isValidUUID(eventId)) {
+    console.warn('Invalid event ID format:', eventId)
+    return [] as (AutomationLog & { vendors: { name: string } | null })[]
   }
+
+  const { supabase } = await getAuthenticatedClient()
 
   let query = supabase
     .from('automation_logs')
@@ -28,12 +27,12 @@ export async function getAutomationLogs(
 
   const { data: logs, error } = await query
 
-  if (error) {
+  if (error && Object.keys(error).length > 0) {
     console.error('Error fetching logs:', error)
     throw new Error('Failed to fetch logs')
   }
 
-  return logs as (AutomationLog & { vendors: { name: string } | null })[]
+  return (logs ?? []) as (AutomationLog & { vendors: { name: string } | null })[]
 }
 
 export async function exportLogsToCSV(eventId: string) {

@@ -21,6 +21,7 @@ import { MessageTimeline } from './message-timeline'
 import { ParsedFactsCard } from './parsed-facts-card'
 import { VendorWithThread, MessageWithParsed } from '@/types/database'
 import { escalateThread } from '@/app/actions/threads'
+import { normalizeJoinResult } from '@/lib/utils'
 
 interface VendorDrawerProps {
   vendor: VendorWithThread | null
@@ -34,9 +35,7 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
 
   if (!vendor) return null
 
-  const thread = Array.isArray(vendor.vendor_threads)
-    ? vendor.vendor_threads[0]
-    : vendor.vendor_threads
+  const thread = normalizeJoinResult(vendor.vendor_threads)
 
   const isEscalation = thread?.status === 'ESCALATION'
 

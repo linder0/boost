@@ -1,5 +1,6 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, SupabaseClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { User } from '@supabase/supabase-js'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -26,4 +27,24 @@ export async function createClient() {
       },
     }
   )
+}
+
+/**
+ * Creates a Supabase client and verifies the user is authenticated.
+ * Throws if not authenticated - use this in server actions that require auth.
+ */
+export async function getAuthenticatedClient(): Promise<{
+  supabase: SupabaseClient
+  user: User
+}> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    throw new Error('Not authenticated')
+  }
+
+  return { supabase, user }
 }
