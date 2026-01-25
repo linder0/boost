@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
+import { PanelLeft, PanelLeftClose } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +29,26 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
+  
+  // Sidebar collapse state with localStorage persistence
+  const [isCollapsed, setIsCollapsed] = useState(false)
+  
+  // Avatar error state - fallback to initials if image fails to load
+  const [avatarError, setAvatarError] = useState(false)
+  
+  // Load collapsed state from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed')
+    if (saved !== null) {
+      setIsCollapsed(saved === 'true')
+    }
+  }, [])
+  
+  const toggleCollapsed = () => {
+    const newState = !isCollapsed
+    setIsCollapsed(newState)
+    localStorage.setItem('sidebar-collapsed', String(newState))
+  }
 
   // Focus input when editing starts
   useEffect(() => {
@@ -107,8 +128,9 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
     return pathname.startsWith(`/events/${eventId}`)
   }
 
+  // Link class - icons stay left-aligned, no shifting
   const linkClass = (path: string) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer ${
+    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer overflow-hidden whitespace-nowrap ${
       isActive(path)
         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
         : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -127,10 +149,20 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User'
 
   return (
-    <aside className="flex h-screen w-64 flex-col bg-sidebar text-sidebar-foreground">
-      {/* Logo */}
-      <div className="flex h-16 items-center px-6">
-        <Link href="/events" className="flex items-center gap-2 cursor-pointer">
+    <aside className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 overflow-hidden ${isCollapsed ? 'w-[68px]' : 'w-64'}`}>
+      {/* Logo and Toggle */}
+      <div className="flex h-16 items-center gap-3 px-3">
+        <button
+          onClick={toggleCollapsed}
+          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors cursor-pointer"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isCollapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+        </button>
+        <Link 
+          href="/events" 
+          className={`flex items-center gap-2 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}
+        >
           <span className="text-xl font-bold text-sidebar-foreground">Event Ops</span>
         </Link>
       </div>
@@ -138,9 +170,9 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <div className="space-y-1">
-          <Link href="/events" className={linkClass('/events')}>
+          <Link href="/events" className={linkClass('/events')} title={isCollapsed ? 'Dashboard' : undefined}>
             <svg
-              className="h-5 w-5"
+              className="h-5 w-5 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -152,15 +184,16 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
                 d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
               />
             </svg>
-            Dashboard
+            <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>Dashboard</span>
           </Link>
           <button
             onClick={handleNewEvent}
             disabled={creatingEvent}
             className={`w-full ${linkClass('/events/new')}`}
+            title={isCollapsed ? 'New Event' : undefined}
           >
             <svg
-              className="h-5 w-5"
+              className="h-5 w-5 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -172,13 +205,17 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            {creatingEvent ? 'Creating...' : 'New Event'}
+            <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>{creatingEvent ? 'Creating...' : 'New Event'}</span>
           </button>
         </div>
 
-        {/* Events list */}
+        {/* Events list - fades in/out with the width animation */}
         {events.length > 0 && (
-          <div className="mt-6">
+          <div 
+            className={`mt-6 whitespace-nowrap transition-opacity duration-300 ${
+              isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+            }`}
+          >
             <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">
               Your Events
             </h3>
@@ -311,12 +348,12 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
 
       </nav>
 
-      {/* Settings and User section */}
+      {/* Personal Info and User section */}
       <div className="p-3 space-y-1">
-        {/* Settings */}
-        <Link href="/settings" className={linkClass('/settings')}>
+        {/* Personal Info */}
+        <Link href="/profile" className={linkClass('/profile')} title={isCollapsed ? 'Personal Info' : undefined}>
           <svg
-            className="h-5 w-5"
+            className="h-5 w-5 flex-shrink-0"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -325,38 +362,36 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={2}
-              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-            />
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          Settings
+          <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>Personal Info</span>
         </Link>
         <DropdownMenu>
-          <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg p-2 hover:bg-sidebar-accent focus:outline-none focus:ring-2 focus:ring-sidebar-ring cursor-pointer">
-            {user.user_metadata?.avatar_url ? (
+          <DropdownMenuTrigger 
+            className="flex w-full items-center gap-3 rounded-lg p-2 hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden"
+            title={isCollapsed ? displayName : undefined}
+          >
+            {user.user_metadata?.avatar_url && !avatarError ? (
               <img
                 src={user.user_metadata.avatar_url}
                 alt={displayName}
-                className="h-9 w-9 rounded-full"
+                className="h-9 w-9 rounded-full flex-shrink-0"
+                onError={() => setAvatarError(true)}
               />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-foreground text-sm font-medium text-sidebar">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-foreground text-sm font-medium text-sidebar flex-shrink-0">
                 {getInitials()}
               </div>
             )}
-            <div className="flex flex-1 flex-col items-start text-left">
+            <div className={`flex flex-1 flex-col items-start text-left whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
               <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
               <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
                 {user.email}
               </span>
             </div>
             <svg
-              className="h-4 w-4 text-sidebar-foreground/60"
+              className={`h-4 w-4 text-sidebar-foreground/60 flex-shrink-0 transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -369,9 +404,9 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
               />
             </svg>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" side="top" className="w-56">
+          <DropdownMenuContent align="center" side="top" className="w-56">
             <DropdownMenuItem
-              onClick={() => router.push('/settings')}
+              onClick={() => router.push('/profile')}
               className="cursor-pointer"
             >
               <svg
@@ -384,16 +419,10 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                 />
               </svg>
-              Settings
+              Personal Info
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem

@@ -1,14 +1,11 @@
 'use client'
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
+import { extractLocationDetails, type LocationData } from '@/lib/mapbox/geocode'
 
 interface AddressSearchProps {
-  onSelect: (result: {
-    address: string
-    lat: number
-    lng: number
-  }) => void
+  onSelect: (result: LocationData) => void
   defaultValue?: string
   placeholder?: string
 }
@@ -17,6 +14,9 @@ interface Suggestion {
   id: string
   place_name: string
   center: [number, number]
+  context?: Array<{ id: string; text: string }>
+  place_type?: string[]
+  text?: string
 }
 
 export function AddressSearch({
@@ -25,10 +25,28 @@ export function AddressSearch({
   placeholder = 'Search for an address...',
 }: AddressSearchProps) {
   const accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
+  const containerRef = useRef<HTMLDivElement>(null)
   const [query, setQuery] = useState(defaultValue)
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+
+  // Sync query with defaultValue when it changes externally
+  useEffect(() => {
+    setQuery(defaultValue)
+  }, [defaultValue])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Debounced search
   useEffect(() => {
@@ -50,6 +68,9 @@ export function AddressSearch({
               id: f.id,
               place_name: f.place_name,
               center: f.center,
+              context: f.context,
+              place_type: f.place_type,
+              text: f.text,
             }))
           )
           setIsOpen(true)
@@ -67,6 +88,7 @@ export function AddressSearch({
   const handleSelect = useCallback(
     (suggestion: Suggestion) => {
       const [lng, lat] = suggestion.center
+      const { city, neighborhood } = extractLocationDetails(suggestion)
       setQuery(suggestion.place_name)
       setSuggestions([])
       setIsOpen(false)
@@ -74,6 +96,8 @@ export function AddressSearch({
         address: suggestion.place_name,
         lat,
         lng,
+        city,
+        neighborhood,
       })
     },
     [onSelect]
@@ -89,13 +113,12 @@ export function AddressSearch({
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <Input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onFocus={() => suggestions.length > 0 && setIsOpen(true)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 200)}
         placeholder={placeholder}
         className="w-full"
       />

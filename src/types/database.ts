@@ -37,6 +37,10 @@ export type LogEventType =
   | 'DECISION' 
   | 'ESCALATION';
 
+export type ChatRole = 
+  | 'user' 
+  | 'assistant';
+
 // Database table types
 export interface Event {
   id: string;
@@ -153,6 +157,14 @@ export interface GmailToken {
   token_expiry: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  event_id: string;
+  role: ChatRole;
+  content: string;
+  created_at: string;
 }
 
 // Joined types for UI

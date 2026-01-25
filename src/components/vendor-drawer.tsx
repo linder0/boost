@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from './ui/drawer'
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from './ui/dialog'
+import { X } from 'lucide-react'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
@@ -78,12 +80,13 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
   }
 
   return (
-    <Drawer open={!!vendor} onOpenChange={onClose}>
-      <DrawerContent className="h-[90vh]">
-        <div className="mx-auto w-full max-w-4xl overflow-y-auto p-6">
-          <DrawerHeader>
-            <DrawerTitle className="flex items-center justify-between">
-              <span>{vendor.name}</span>
+    <Dialog open={!!vendor} onOpenChange={onClose}>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col gap-0 focus:outline-none" showCloseButton={false}>
+        {/* Sticky Header */}
+        <DialogHeader className="sticky top-0 bg-background z-10 px-6 pt-6 pb-4 border-b">
+          <DialogTitle className="flex items-center justify-between gap-4">
+            <span>{vendor.name}</span>
+            <div className="flex items-center gap-3">
               {thread && (
                 <Badge
                   variant={
@@ -97,12 +100,19 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
                   {thread.status}
                 </Badge>
               )}
-            </DrawerTitle>
-            <DrawerDescription>
-              {vendor.category} • {vendor.contact_email}
-            </DrawerDescription>
-          </DrawerHeader>
+              <DialogClose className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
+                <X className="h-5 w-5" />
+                <span className="sr-only">Close</span>
+              </DialogClose>
+            </div>
+          </DialogTitle>
+          <DialogDescription>
+            {vendor.category} • {vendor.contact_email}
+          </DialogDescription>
+        </DialogHeader>
 
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="space-y-6">
             {/* Escalation Banner */}
             {isEscalation && thread?.escalation_reason && (
@@ -362,7 +372,7 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
             )}
           </div>
         </div>
-      </DrawerContent>
-    </Drawer>
+      </DialogContent>
+    </Dialog>
   )
 }

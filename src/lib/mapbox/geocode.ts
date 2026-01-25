@@ -4,18 +4,48 @@
 
 const MAPBOX_GEOCODING_URL = 'https://api.mapbox.com/geocoding/v5/mapbox.places'
 
-interface GeocodeResult {
+/**
+ * Location data structure used throughout the app
+ */
+export interface LocationData {
+  address: string
   lat: number
   lng: number
-  address: string
+  city?: string
+  neighborhood?: string
 }
 
 /**
- * Geocode an address string to coordinates
+ * Extract city and neighborhood from a Mapbox feature's context array
+ */
+export function extractLocationDetails(feature: any): { city?: string; neighborhood?: string } {
+  const context = feature.context || []
+  let city: string | undefined
+  let neighborhood: string | undefined
+
+  for (const item of context) {
+    const id = item.id || ''
+    if (id.startsWith('place.')) {
+      city = item.text
+    } else if (id.startsWith('neighborhood.') || id.startsWith('locality.')) {
+      neighborhood = item.text
+    }
+  }
+
+  // If the feature itself is a place (city), use it
+  if (!city && feature.place_type?.includes('place')) {
+    city = feature.text
+  }
+
+  return { city, neighborhood }
+}
+
+/**
+ * Geocode an address string to coordinates with full location details
  */
 export async function geocodeAddress(
   address: string
-): Promise<GeocodeResult | null> {
+): Promise<LocationData | null> {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 
   if (!token) {
@@ -39,11 +69,14 @@ export async function geocodeAddress(
     if (data.features && data.features.length > 0) {
       const feature = data.features[0]
       const [lng, lat] = feature.center
+      const { city, neighborhood } = extractLocationDetails(feature)
 
       return {
         lat,
         lng,
         address: feature.place_name || address,
+        city,
+        neighborhood,
       }
     }
 
@@ -55,12 +88,12 @@ export async function geocodeAddress(
 }
 
 /**
- * Reverse geocode coordinates to an address
+ * Reverse geocode coordinates to full location data
  */
 export async function reverseGeocode(
   lat: number,
   lng: number
-): Promise<string | null> {
+): Promise<Omit<LocationData, 'lat' | 'lng'> | null> {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
 
   if (!token) {
@@ -81,7 +114,13 @@ export async function reverseGeocode(
     const data = await response.json()
 
     if (data.features && data.features.length > 0) {
-      return data.features[0].place_name || null
+      const feature = data.features[0]
+      const { city, neighborhood } = extractLocationDetails(feature)
+      return {
+        address: feature.place_name,
+        city,
+        neighborhood,
+      }
     }
 
     return null

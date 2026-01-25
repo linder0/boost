@@ -4,7 +4,6 @@ import { Event } from '@/types/database'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { EmptyState } from './empty-state'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +15,7 @@ import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { formatCurrency } from '@/lib/utils'
 import { deleteEvent } from '@/app/actions/events'
+import { Plus } from 'lucide-react'
 
 interface EventsListProps {
   events: Event[]
@@ -24,21 +24,21 @@ interface EventsListProps {
 export function EventsList({ events }: EventsListProps) {
   const router = useRouter()
 
-  if (events.length === 0) {
-    return (
-      <EmptyState
-        title="No events yet"
-        description="Get started by creating your first event"
-        action={{
-          label: 'Create New Event',
-          onClick: () => router.push('/events/new'),
-        }}
-      />
-    )
-  }
-
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Create New Event Card */}
+      <Card 
+        className="cursor-pointer border-0 bg-muted/50 hover:bg-muted/70 transition-colors flex items-center justify-center min-h-[220px]"
+        onClick={() => router.push('/events/new')}
+      >
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <div className="rounded-full bg-muted-foreground/20 p-4">
+            <Plus className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <span className="font-medium">Create New Event</span>
+        </div>
+      </Card>
+
       {events.map((event) => {
         const primaryDate = event.preferred_dates?.[0]?.date
         const formattedDate = primaryDate 

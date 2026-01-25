@@ -20,6 +20,7 @@ interface MapboxMapProps {
   onMarkerClick?: (markerId: string) => void
   className?: string
   height?: string
+  radiusMeters?: number
 }
 
 export function MapboxMap({
@@ -32,6 +33,7 @@ export function MapboxMap({
   onMarkerClick,
   className = '',
   height = '300px',
+  radiusMeters,
 }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -193,6 +195,101 @@ export function MapboxMap({
       })
     }
   }, [markers, mapReady, onMarkerClick])
+
+  // Draw radius circle
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !radiusMeters) return
+
+    const map = mapRef.current
+    const sourceId = 'radius-circle'
+    const layerId = 'radius-circle-fill'
+    const outlineLayerId = 'radius-circle-outline'
+
+    // Create a GeoJSON circle (approximation using 64 points)
+    const createGeoJSONCircle = (centerLng: number, centerLat: number, radiusInMeters: number, points = 64) => {
+      const coords = []
+      const km = radiusInMeters / 1000
+      const distanceX = km / (111.32 * Math.cos((centerLat * Math.PI) / 180))
+      const distanceY = km / 110.574
+
+      for (let i = 0; i < points; i++) {
+        const theta = (i / points) * (2 * Math.PI)
+        const x = distanceX * Math.cos(theta)
+        const y = distanceY * Math.sin(theta)
+        coords.push([centerLng + x, centerLat + y])
+      }
+      coords.push(coords[0]) // Close the circle
+
+      return {
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Polygon' as const,
+          coordinates: [coords],
+        },
+        properties: {},
+      }
+    }
+
+    const circleData = createGeoJSONCircle(center.lng, center.lat, radiusMeters)
+
+    // Helper to safely check if layer/source exists
+    const safeGetLayer = (id: string) => {
+      try {
+        return map.getLayer(id)
+      } catch {
+        return undefined
+      }
+    }
+    const safeGetSource = (id: string) => {
+      try {
+        return map.getSource(id)
+      } catch {
+        return undefined
+      }
+    }
+
+    // Remove existing layers/source if they exist
+    if (safeGetLayer(layerId)) map.removeLayer(layerId)
+    if (safeGetLayer(outlineLayerId)) map.removeLayer(outlineLayerId)
+    if (safeGetSource(sourceId)) map.removeSource(sourceId)
+
+    // Add the circle source and layers
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: circleData,
+    })
+
+    map.addLayer({
+      id: layerId,
+      type: 'fill',
+      source: sourceId,
+      paint: {
+        'fill-color': '#3b82f6',
+        'fill-opacity': 0.1,
+      },
+    })
+
+    map.addLayer({
+      id: outlineLayerId,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': '#3b82f6',
+        'line-width': 2,
+        'line-opacity': 0.5,
+      },
+    })
+
+    return () => {
+      try {
+        if (map.getLayer(layerId)) map.removeLayer(layerId)
+        if (map.getLayer(outlineLayerId)) map.removeLayer(outlineLayerId)
+        if (map.getSource(sourceId)) map.removeSource(sourceId)
+      } catch {
+        // Map may have been removed, ignore cleanup errors
+      }
+    }
+  }, [center.lat, center.lng, radiusMeters, mapReady])
 
   // No token configured
   if (!accessToken) {

@@ -47,8 +47,6 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
 
   // Form state - initialize from event if provided
   const [name, setName] = useState(event?.name || '')
-  const [city, setCity] = useState(event?.city || '')
-  const [neighborhood, setNeighborhood] = useState(event?.constraints?.neighborhood || '')
   const [headcount, setHeadcount] = useState(event?.headcount?.toString() || '')
   const [budget, setBudget] = useState(event?.total_budget?.toString() || '')
   const [dates, setDates] = useState<{ date: string; rank: number }[]>(
@@ -70,6 +68,8 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
           address: event.location_address || '',
           lat: event.location_lat,
           lng: event.location_lng,
+          city: event.city || undefined,
+          neighborhood: event.constraints?.neighborhood || undefined,
         }
       : null
   )
@@ -107,7 +107,7 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
 
       const eventData = {
         name: name.trim() || 'Untitled Event',
-        city: city.trim(),
+        city: location?.city?.trim() || '',
         preferred_dates: validDates,
         headcount: parseInt(headcount) || 0,
         total_budget: parseFloat(budget) || 0,
@@ -115,7 +115,7 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
         date_flexibility_days: 0,
         budget_flexibility_percent: 0,
         constraints: {
-          neighborhood: neighborhood.trim() || undefined,
+          neighborhood: location?.neighborhood?.trim() || undefined,
           time_frame: (timeFrame || undefined) as 'morning' | 'afternoon' | 'evening' | 'night' | undefined,
           venue_types: venueTypes.length > 0 ? venueTypes : undefined,
           indoor_outdoor: indoorOutdoor,
@@ -174,32 +174,11 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="city">City</Label>
-              <Input
-                id="city"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="New York"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="neighborhood">Neighborhood</Label>
-              <Input
-                id="neighborhood"
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-                placeholder="SoHo, Midtown, etc."
-              />
-            </div>
-          </div>
-
           <LocationPicker
             value={location}
             onChange={setLocation}
-            label="Event Location (optional)"
-            placeholder="Search for the event venue address..."
+            label="Event Location"
+            placeholder="Search for a venue, neighborhood, or city..."
           />
         </div>
 

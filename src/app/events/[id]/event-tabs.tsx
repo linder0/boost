@@ -18,6 +18,9 @@ export function EventTabs() {
     if (pathname.endsWith('/log')) {
       return 'log'
     }
+    if (pathname.endsWith('/chat')) {
+      return 'chat'
+    }
     return 'info'
   }
 
@@ -33,6 +36,9 @@ export function EventTabs() {
         break
       case 'log':
         router.push(`/events/${eventId}/log`)
+        break
+      case 'chat':
+        router.push(`/events/${eventId}/chat`)
         break
     }
   }
@@ -57,6 +63,9 @@ export function EventTabs() {
       <TabsList className="h-auto bg-transparent p-0 gap-8 -mb-[1px]">
         <TabsTrigger value="info" className={tabClass}>
           Event Information
+        </TabsTrigger>
+        <TabsTrigger value="chat" className={tabClass}>
+          Chat
         </TabsTrigger>
         <TabsTrigger value="vendors" className={tabClass}>
           Vendors
