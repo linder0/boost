@@ -1,15 +1,9 @@
 import { Event, Vendor } from '@/types/database'
-import { formatPreferredDates } from '@/lib/utils'
+import { formatPreferredDates, buildConstraintsList } from '@/lib/utils'
 
 export function generateOutreachEmail(event: Event, vendor: Vendor | { name: string }): string {
   const dates = formatPreferredDates(event.preferred_dates)
-
-  const constraints: string[] = []
-  if (event.constraints?.ada) constraints.push('ADA accessible')
-  if (event.constraints?.alcohol) constraints.push('Alcohol license')
-  if (event.constraints?.indoor_outdoor && event.constraints.indoor_outdoor !== 'either') {
-    constraints.push(`${event.constraints.indoor_outdoor} space`)
-  }
+  const constraints = buildConstraintsList(event.constraints || {})
 
   return `Hi ${vendor.name} team,
 

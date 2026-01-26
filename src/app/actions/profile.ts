@@ -1,6 +1,6 @@
 'use server'
 
-import { getAuthenticatedClient } from '@/lib/supabase/server'
+import { getAuthenticatedClient, ensureFound } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
 export interface UserProfile {
@@ -48,13 +48,9 @@ export async function saveUserProfile(context: string): Promise<UserProfile> {
       .select()
       .single()
 
-    if (error) {
-      console.error('Error updating user profile:', error)
-      throw new Error('Failed to save profile')
-    }
-
+    const updated = ensureFound(data, error, 'Failed to save profile')
     revalidatePath('/profile')
-    return data
+    return updated
   } else {
     // Insert new profile
     const { data, error } = await supabase
@@ -66,12 +62,8 @@ export async function saveUserProfile(context: string): Promise<UserProfile> {
       .select()
       .single()
 
-    if (error) {
-      console.error('Error creating user profile:', error)
-      throw new Error('Failed to save profile')
-    }
-
+    const created = ensureFound(data, error, 'Failed to save profile')
     revalidatePath('/profile')
-    return data
+    return created
   }
 }

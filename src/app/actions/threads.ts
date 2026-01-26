@@ -1,6 +1,10 @@
 'use server'
 
-import { getAuthenticatedClient } from '@/lib/supabase/server'
+import { 
+  getAuthenticatedClient,
+  handleSupabaseError,
+  ensureFound
+} from '@/lib/supabase/server'
 import { VendorStatus } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { inngest } from '@/inngest/client'
@@ -15,9 +19,7 @@ export async function startOutreach(vendorId: string) {
     .eq('id', vendorId)
     .single()
 
-  if (vendorError || !vendor) {
-    throw new Error('Vendor not found')
-  }
+  const found = ensureFound(vendor, vendorError, 'Vendor not found')
 
   // Trigger Inngest outreach event
   await inngest.send({
@@ -28,7 +30,7 @@ export async function startOutreach(vendorId: string) {
     },
   })
 
-  revalidatePath(`/events/${vendor.event_id}/vendors`)
+  revalidatePath(`/events/${found.event_id}/vendors`)
   return { success: true }
 }
 
@@ -44,10 +46,6 @@ export async function escalateThread(
     .select('*, vendors!inner(*, events!inner(user_id))')
     .eq('id', threadId)
     .single()
-
-  if (threadError || !thread) {
-    throw new Error('Thread not found')
-  }
 
   // Store human message
   await supabase.from('messages').insert({
@@ -77,7 +75,7 @@ export async function escalateThread(
     },
   })
 
-  revalidatePath(`/events/${thread.vendors.event_id}/vendors`)
+  revalidatePath(`/events/${found.vendors.event_id}/vendors`)
   return { success: true }
 }
 
@@ -91,13 +89,10 @@ export async function updateThreadStatus(threadId: string, status: VendorStatus)
     .select('*, vendors!inner(event_id)')
     .single()
 
-  if (error) {
-    console.error('Error updating thread status:', error)
-    throw new Error('Failed to update thread status')
-  }
+  const updated = ensureFound(thread, error, 'Failed to update thread status')
 
-  revalidatePath(`/events/${thread.vendors.event_id}/vendors`)
-  return thread
+  revalidatePath(`/events/${updated.vendors.event_id}/vendors`)
+  return updated
 }
 
 export async function bulkStartOutreach(eventId: string) {
@@ -110,13 +105,11 @@ export async function bulkStartOutreach(eventId: string) {
     .eq('event_id', eventId)
     .eq('vendor_threads.status', 'NOT_CONTACTED')
 
-  if (error) {
-    console.error('Error fetching vendors:', error)
-    throw new Error('Failed to fetch vendors')
-  }
+  handleSupabaseError(error, 'Failed to fetch vendors')
+  const vendorList = vendors ?? []
 
   // Trigger outreach for all vendors
-  const promises = vendors.map((vendor) =>
+  const promises = vendorList.map((vendor) =>
     inngest.send({
       name: 'vendor.outreach.start',
       data: {
@@ -129,7 +122,7 @@ export async function bulkStartOutreach(eventId: string) {
   await Promise.all(promises)
 
   revalidatePath(`/events/${eventId}/vendors`)
-  return { success: true, count: vendors.length }
+  return { success: true, count: vendorList.length }
 }
 
 // Alias for semantic clarity in venue discovery flow

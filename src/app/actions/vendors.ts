@@ -1,6 +1,12 @@
 'use server'
 
-import { getAuthenticatedClient, verifyEventOwnership, createVendorThreads } from '@/lib/supabase/server'
+import { 
+  getAuthenticatedClient, 
+  verifyEventOwnership, 
+  createVendorThreads,
+  handleSupabaseError,
+  ensureFound
+} from '@/lib/supabase/server'
 import { Vendor, VendorWithThread, Event } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { isValidUUID } from '@/lib/utils'
@@ -28,15 +34,11 @@ export async function createVendor(
     .select()
     .single()
 
-  if (error) {
-    console.error('Error creating vendor:', error)
-    throw new Error('Failed to create vendor')
-  }
-
-  await createVendorThreads(supabase, [vendor.id])
+  const created = ensureFound(vendor, error, 'Failed to create vendor')
+  await createVendorThreads(supabase, [created.id])
 
   revalidatePath(`/events/${eventId}/vendors`)
-  return vendor as Vendor
+  return created as Vendor
 }
 
 export async function bulkCreateVendors(
@@ -57,15 +59,12 @@ export async function bulkCreateVendors(
     .insert(vendorsToInsert)
     .select()
 
-  if (error) {
-    console.error('Error creating vendors:', error)
-    throw new Error('Failed to create vendors')
-  }
-
-  await createVendorThreads(supabase, createdVendors.map((v: { id: string }) => v.id))
+  handleSupabaseError(error, 'Failed to create vendors')
+  const created = createdVendors ?? []
+  await createVendorThreads(supabase, created.map((v: { id: string }) => v.id))
 
   revalidatePath(`/events/${eventId}/vendors`)
-  return createdVendors as Vendor[]
+  return created as Vendor[]
 }
 
 export async function getVendorsByEvent(eventId: string) {
@@ -82,11 +81,7 @@ export async function getVendorsByEvent(eventId: string) {
     .eq('event_id', eventId)
     .order('created_at', { ascending: false })
 
-  if (error && Object.keys(error).length > 0) {
-    console.error('Error fetching vendors:', error)
-    throw new Error('Failed to fetch vendors')
-  }
-
+  handleSupabaseError(error, 'Failed to fetch vendors')
   return (vendors ?? []) as VendorWithThread[]
 }
 
@@ -108,12 +103,7 @@ export async function getVendorDetail(vendorId: string) {
     .eq('id', vendorId)
     .single()
 
-  if (error) {
-    console.error('Error fetching vendor detail:', error)
-    throw new Error('Failed to fetch vendor detail')
-  }
-
-  return vendor
+  return ensureFound(vendor, error, 'Failed to fetch vendor detail')
 }
 
 export async function updateVendor(
@@ -129,12 +119,7 @@ export async function updateVendor(
     .select()
     .single()
 
-  if (error) {
-    console.error('Error updating vendor:', error)
-    throw new Error('Failed to update vendor')
-  }
-
-  return vendor as Vendor
+  return ensureFound(vendor, error, 'Failed to update vendor') as Vendor
 }
 
 export async function updateVendorLocation(
@@ -162,23 +147,14 @@ export async function updateVendorLocation(
     .select()
     .single()
 
-  if (error) {
-    console.error('Error updating vendor location:', error)
-    throw new Error('Failed to update vendor location')
-  }
-
-  return vendor as Vendor
+  return ensureFound(vendor, error, 'Failed to update vendor location') as Vendor
 }
 
 export async function deleteVendor(vendorId: string) {
   const { supabase } = await getAuthenticatedClient()
 
   const { error } = await supabase.from('vendors').delete().eq('id', vendorId)
-
-  if (error) {
-    console.error('Error deleting vendor:', error)
-    throw new Error('Failed to delete vendor')
-  }
+  handleSupabaseError(error, 'Failed to delete vendor')
 
   return { success: true }
 }
@@ -251,15 +227,12 @@ export async function createVendorsFromDiscovery(
     .insert(vendorsToInsert)
     .select()
 
-  if (error) {
-    console.error('Error creating vendors from discovery:', error)
-    throw new Error('Failed to create vendors')
-  }
-
-  await createVendorThreads(supabase, createdVendors.map((v: { id: string }) => v.id))
+  handleSupabaseError(error, 'Failed to create vendors')
+  const created = createdVendors ?? []
+  await createVendorThreads(supabase, created.map((v: { id: string }) => v.id))
 
   // Generate AI outreach messages for each vendor (in parallel)
-  const messagePromises = createdVendors.map(async (vendor: { id: string; name: string; category: string }) => {
+  const messagePromises = created.map(async (vendor: { id: string; name: string; category: string }) => {
     try {
       const message = await generateOutreachMessage(event, {
         name: vendor.name,
@@ -282,7 +255,7 @@ export async function createVendorsFromDiscovery(
   await Promise.allSettled(messagePromises)
 
   revalidatePath(`/events/${eventId}/vendors`)
-  return createdVendors as Vendor[]
+  return created as Vendor[]
 }
 
 // Regenerate AI outreach message for a vendor
@@ -300,16 +273,13 @@ export async function regenerateVendorMessage(vendorId: string) {
     .eq('id', vendorId)
     .single()
 
-  if (vendorError || !vendor) {
-    throw new Error('Vendor not found')
-  }
-
-  const event = vendor.events as Event
+  const found = ensureFound(vendor, vendorError, 'Vendor not found')
+  const event = found.events as Event
 
   // Generate new message
   const message = await generateOutreachMessage(event, {
-    name: vendor.name,
-    category: vendor.category,
+    name: found.name,
+    category: found.category,
   })
 
   // Update vendor with new message
@@ -318,10 +288,7 @@ export async function regenerateVendorMessage(vendorId: string) {
     .update({ custom_message: message })
     .eq('id', vendorId)
 
-  if (updateError) {
-    console.error('Error updating vendor message:', updateError)
-    throw new Error('Failed to update vendor message')
-  }
+  handleSupabaseError(updateError, 'Failed to update vendor message')
 
   revalidatePath(`/events/${event.id}/vendors`)
   return message
@@ -342,14 +309,11 @@ export async function updateVendorMessage(vendorId: string, message: string) {
     .select('*, events(id)')
     .single()
 
-  if (error) {
-    console.error('Error updating vendor message:', error)
-    throw new Error('Failed to update vendor message')
+  const updated = ensureFound(vendor, error, 'Failed to update vendor message')
+
+  if (updated.events) {
+    revalidatePath(`/events/${(updated.events as { id: string }).id}/vendors`)
   }
 
-  if (vendor.events) {
-    revalidatePath(`/events/${(vendor.events as { id: string }).id}/vendors`)
-  }
-
-  return vendor as Vendor
+  return updated as Vendor
 }

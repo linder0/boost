@@ -1,7 +1,36 @@
 import { createServerClient, SupabaseClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { User } from '@supabase/supabase-js'
+import { User, PostgrestError } from '@supabase/supabase-js'
 import { Event } from '@/types/database'
+
+/**
+ * Handles Supabase errors consistently across all server actions.
+ * Logs the error and throws a user-friendly message.
+ */
+export function handleSupabaseError(
+  error: PostgrestError | null,
+  userMessage: string
+): void {
+  if (error && Object.keys(error).length > 0) {
+    console.error(userMessage, error)
+    throw new Error(userMessage)
+  }
+}
+
+/**
+ * Checks if a Supabase query result is empty and throws if so.
+ */
+export function ensureFound<T>(
+  data: T | null,
+  error: PostgrestError | null,
+  userMessage: string
+): T {
+  handleSupabaseError(error, userMessage)
+  if (!data) {
+    throw new Error(userMessage)
+  }
+  return data
+}
 
 export async function createClient() {
   const cookieStore = await cookies()

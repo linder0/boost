@@ -1,6 +1,10 @@
 'use server'
 
-import { createClient, getAuthenticatedClient } from '@/lib/supabase/server'
+import { 
+  getAuthenticatedClient,
+  handleSupabaseError,
+  ensureFound
+} from '@/lib/supabase/server'
 import { Event } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { isValidUUID } from '@/lib/utils'
@@ -25,14 +29,11 @@ export async function createEmptyEvent() {
     .select()
     .single()
 
-  if (error) {
-    console.error('Error creating empty event:', error)
-    throw new Error('Failed to create event')
-  }
+  const created = ensureFound(event, error, 'Failed to create event')
 
   revalidatePath('/events')
   revalidatePath('/', 'layout')
-  return event as Event
+  return created as Event
 }
 
 export async function createEvent(data: {
@@ -73,14 +74,11 @@ export async function createEvent(data: {
     .select()
     .single()
 
-  if (error) {
-    console.error('Error creating event:', error)
-    throw new Error('Failed to create event')
-  }
+  const created = ensureFound(event, error, 'Failed to create event')
 
   revalidatePath('/events')
   revalidatePath('/', 'layout')
-  return event as Event
+  return created as Event
 }
 
 export async function getEvent(id: string) {
@@ -96,12 +94,7 @@ export async function getEvent(id: string) {
     .eq('id', id)
     .single()
 
-  if (error) {
-    console.error('Error fetching event:', error)
-    throw new Error('Failed to fetch event')
-  }
-
-  return event as Event
+  return ensureFound(event, error, 'Failed to fetch event') as Event
 }
 
 export async function updateEventSettings(
@@ -118,14 +111,11 @@ export async function updateEventSettings(
     .select()
     .single()
 
-  if (error) {
-    console.error('Error updating event:', error)
-    throw new Error('Failed to update event')
-  }
+  const updated = ensureFound(event, error, 'Failed to update event')
 
   revalidatePath(`/events/${id}`)
   revalidatePath('/', 'layout')
-  return event as Event
+  return updated as Event
 }
 
 export async function listUserEvents() {
@@ -137,11 +127,7 @@ export async function listUserEvents() {
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
 
-  if (error && Object.keys(error).length > 0) {
-    console.error('Error fetching events:', error)
-    throw new Error('Failed to fetch events')
-  }
-
+  handleSupabaseError(error, 'Failed to fetch events')
   return (events ?? []) as Event[]
 }
 
@@ -154,10 +140,7 @@ export async function deleteEvent(id: string) {
     .eq('id', id)
     .eq('user_id', user.id)
 
-  if (error) {
-    console.error('Error deleting event:', error)
-    throw new Error('Failed to delete event')
-  }
+  handleSupabaseError(error, 'Failed to delete event')
 
   revalidatePath('/events')
   revalidatePath('/', 'layout')

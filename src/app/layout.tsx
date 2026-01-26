@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Event Ops Automation",
+  title: "VROOM",
   description: "Automate event vendor outreach and management",
 };
 
@@ -45,12 +45,13 @@ export default async function RootLayout({
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-hidden`}
+        suppressHydrationWarning
       >
         {user ? (
           <div className="flex h-screen">
             <Sidebar user={user} events={events} />
-            <main className="flex-1 overflow-hidden bg-sidebar pt-4 pr-4">
-              <div className="h-full rounded-tl-2xl rounded-tr-2xl bg-white overflow-auto overscroll-contain">
+            <main className="flex-1 overflow-hidden bg-sidebar pt-4 pr-4 pb-4">
+              <div className="h-full rounded-2xl bg-white overflow-auto overscroll-contain">
                 {children}
               </div>
             </main>

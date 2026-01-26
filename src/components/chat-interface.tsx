@@ -175,37 +175,35 @@ export function ChatInterface({ eventId, initialMessages }: ChatInterfaceProps) 
       </div>
 
       {/* Input Area - ChatGPT style */}
-      <div className="p-4 pb-6">
-        <div className="max-w-3xl mx-auto">
-          <div className="relative flex items-center gap-2 rounded-2xl border bg-background shadow-sm p-2 transition-colors focus-within:border-foreground/30">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Message Event Assistant..."
-              className="flex-1 min-h-[24px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-1"
-              rows={1}
-              disabled={isLoading}
-            />
-            <Button 
-              type="button"
-              onClick={() => handleSubmit()}
-              disabled={isLoading || !input.trim()}
-              size="icon"
-              className="h-8 w-8 rounded-lg shrink-0"
-            >
-              {isLoading ? (
-                <StopIcon />
-              ) : (
-                <SendIcon />
-              )}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Press Enter to send, Shift+Enter for new line
-          </p>
+      <div className="p-4 pb-6 max-w-3xl mx-auto w-full">
+        <div className="relative flex items-center gap-2 rounded-2xl border bg-background shadow-sm px-4 py-2 transition-colors focus-within:border-foreground/30">
+          <Textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Message Event Assistant..."
+            className="flex-1 min-h-[24px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
+            rows={1}
+            disabled={isLoading}
+          />
+          <Button 
+            type="button"
+            onClick={() => handleSubmit()}
+            disabled={isLoading || !input.trim()}
+            size="icon"
+            className="h-8 w-8 rounded-lg shrink-0"
+          >
+            {isLoading ? (
+              <StopIcon />
+            ) : (
+              <SendIcon />
+            )}
+          </Button>
         </div>
+        <p className="text-xs text-muted-foreground mt-2 text-center">
+          Press Enter to send, Shift+Enter for new line
+        </p>
       </div>
     </div>
   )
@@ -265,11 +263,7 @@ function MessageRow({ message }: { message: DisplayMessage }) {
                   {message.content}
                 </ReactMarkdown>
               )
-            ) : (
-              message.isStreaming && (
-                <span className="inline-block w-0.5 h-5 bg-foreground animate-pulse" />
-              )
-            )}
+            ) : null}
           </div>
         </div>
       </div>

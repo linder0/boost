@@ -49,7 +49,9 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted px-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Event Ops Automation</CardTitle>
+          <CardTitle>
+            <span style={{ fontFamily: 'var(--font-brand)', fontWeight: 700, fontStyle: 'italic' }}>VROOM</span>
+          </CardTitle>
           <CardDescription>
             Sign in with Google to access Gmail for vendor outreach
           </CardDescription>

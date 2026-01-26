@@ -151,20 +151,46 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   return (
     <aside className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 overflow-hidden ${isCollapsed ? 'w-[68px]' : 'w-64'}`}>
       {/* Logo and Toggle */}
-      <div className="flex h-16 items-center gap-3 px-3">
-        <button
-          onClick={toggleCollapsed}
-          className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors cursor-pointer"
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? <PanelLeft className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-        </button>
+      <div className="relative flex h-16 items-center px-3">
+        {/* Full VROOM logo - fades out when collapsed */}
         <Link 
           href="/events" 
-          className={`flex items-center gap-2 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}
+          className={`flex items-center px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${
+            isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
         >
-          <span className="text-xl font-bold text-sidebar-foreground">Event Ops</span>
+          <span className="text-xl text-sidebar-foreground" style={{ fontFamily: 'var(--font-brand)', fontWeight: 700, fontStyle: 'italic' }}>VROOM</span>
         </Link>
+
+        {/* Small "V" logo button - fades in when collapsed, fixed position */}
+        <button
+          onClick={toggleCollapsed}
+          className={`group absolute left-3 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${
+            isCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
+          title="Expand sidebar"
+        >
+          {/* Small "V" logo - hidden on hover */}
+          <span 
+            className="text-lg font-bold italic group-hover:opacity-0 transition-opacity" 
+            style={{ fontFamily: 'var(--font-brand)' }}
+          >
+            V
+          </span>
+          {/* Expand icon - shown on hover */}
+          <PanelLeft className="h-5 w-5 absolute opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+
+        {/* Collapse toggle - right side when expanded */}
+        <button
+          onClick={toggleCollapsed}
+          className={`absolute right-3 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer transition-opacity duration-300 ${
+            isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
+          }`}
+          title="Collapse sidebar"
+        >
+          <PanelLeftClose className="h-5 w-5" />
+        </button>
       </div>
 
       {/* Navigation */}

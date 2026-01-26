@@ -1,6 +1,10 @@
 'use server'
 
-import { getAuthenticatedClient } from '@/lib/supabase/server'
+import { 
+  getAuthenticatedClient, 
+  handleSupabaseError,
+  ensureFound 
+} from '@/lib/supabase/server'
 import { ChatMessage, ChatRole } from '@/types/database'
 import { isValidUUID } from '@/lib/utils'
 
@@ -17,11 +21,7 @@ export async function getChatHistory(eventId: string): Promise<ChatMessage[]> {
     .eq('event_id', eventId)
     .order('created_at', { ascending: true })
 
-  if (error) {
-    console.error('Error fetching chat history:', error)
-    throw new Error('Failed to fetch chat history')
-  }
-
+  handleSupabaseError(error, 'Failed to fetch chat history')
   return (messages ?? []) as ChatMessage[]
 }
 
@@ -43,9 +43,7 @@ export async function saveChatMessage(
     .eq('id', eventId)
     .single()
 
-  if (eventError || !event) {
-    throw new Error('Event not found or access denied')
-  }
+  ensureFound(event, eventError, 'Event not found or access denied')
 
   const { data: message, error } = await supabase
     .from('chat_messages')
@@ -57,12 +55,7 @@ export async function saveChatMessage(
     .select()
     .single()
 
-  if (error) {
-    console.error('Error saving chat message:', error)
-    throw new Error('Failed to save chat message')
-  }
-
-  return message as ChatMessage
+  return ensureFound(message, error, 'Failed to save chat message') as ChatMessage
 }
 
 export async function clearChatHistory(eventId: string): Promise<void> {
@@ -77,8 +70,5 @@ export async function clearChatHistory(eventId: string): Promise<void> {
     .delete()
     .eq('event_id', eventId)
 
-  if (error) {
-    console.error('Error clearing chat history:', error)
-    throw new Error('Failed to clear chat history')
-  }
+  handleSupabaseError(error, 'Failed to clear chat history')
 }

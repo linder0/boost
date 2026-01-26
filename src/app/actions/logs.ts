@@ -1,6 +1,6 @@
 'use server'
 
-import { getAuthenticatedClient } from '@/lib/supabase/server'
+import { getAuthenticatedClient, handleSupabaseError } from '@/lib/supabase/server'
 import { AutomationLog, LogEventType } from '@/types/database'
 import { isValidUUID } from '@/lib/utils'
 
@@ -27,11 +27,7 @@ export async function getAutomationLogs(
 
   const { data: logs, error } = await query
 
-  if (error && Object.keys(error).length > 0) {
-    console.error('Error fetching logs:', error)
-    throw new Error('Failed to fetch logs')
-  }
-
+  handleSupabaseError(error, 'Failed to fetch logs')
   return (logs ?? []) as (AutomationLog & { vendors: { name: string } | null })[]
 }
 

@@ -1,4 +1,4 @@
-# Event Ops Automation
+# VROOM
 
 Automate vendor outreach for event planning. Reduce email back-and-forth by 80%+.
 
