@@ -8,6 +8,7 @@ export interface MapMarker {
   lng: number
   label?: string
   color?: string
+  draggable?: boolean
 }
 
 interface MapboxMapProps {
@@ -18,6 +19,7 @@ interface MapboxMapProps {
   clickToSet?: boolean
   onMapClick?: (coords: { lat: number; lng: number }) => void
   onMarkerClick?: (markerId: string) => void
+  onMarkerDrag?: (markerId: string, coords: { lat: number; lng: number }) => void
   className?: string
   height?: string
   radiusMeters?: number
@@ -31,6 +33,7 @@ export function MapboxMap({
   clickToSet = false,
   onMapClick,
   onMarkerClick,
+  onMarkerDrag,
   className = '',
   height = '300px',
   radiusMeters,
@@ -130,13 +133,13 @@ export function MapboxMap({
     }
   }, [accessToken, interactive, clickToSet])
 
-  // Update center when prop changes
+  // Update center/zoom when props change
   useEffect(() => {
     if (mapRef.current && mapReady) {
       mapRef.current.flyTo({
         center: [center.lng, center.lat],
         zoom: zoom,
-        duration: 1000,
+        duration: 500,
       })
     }
   }, [center.lat, center.lng, zoom, mapReady])
@@ -155,17 +158,25 @@ export function MapboxMap({
     markers.forEach((markerData) => {
       const el = document.createElement('div')
       el.className = 'mapbox-marker'
-      el.style.backgroundColor = markerData.color || '#3b82f6'
+      el.style.backgroundColor = markerData.color || '#000000'
       el.style.width = '24px'
       el.style.height = '24px'
       el.style.borderRadius = '50%'
       el.style.border = '3px solid white'
       el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-      el.style.cursor = 'pointer'
+      el.style.cursor = markerData.draggable ? 'grab' : 'pointer'
 
-      const marker = new mapboxgl.Marker(el)
+      const marker = new mapboxgl.Marker({ element: el, draggable: markerData.draggable || false })
         .setLngLat([markerData.lng, markerData.lat])
         .addTo(mapRef.current!)
+
+      // Handle drag end event
+      if (markerData.draggable && onMarkerDrag) {
+        marker.on('dragend', () => {
+          const lngLat = marker.getLngLat()
+          onMarkerDrag(markerData.id, { lat: lngLat.lat, lng: lngLat.lng })
+        })
+      }
 
       // Add popup if label exists
       if (markerData.label) {
@@ -194,7 +205,7 @@ export function MapboxMap({
         duration: 1000,
       })
     }
-  }, [markers, mapReady, onMarkerClick])
+  }, [markers, mapReady, onMarkerClick, onMarkerDrag])
 
   // Draw radius circle
   useEffect(() => {
