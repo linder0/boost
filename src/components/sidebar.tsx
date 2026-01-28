@@ -128,9 +128,9 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
     return pathname.startsWith(`/events/${eventId}`)
   }
 
-  // Link class - icons stay left-aligned, no shifting
+  // Link class - icons stay fixed, rounded highlights
   const linkClass = (path: string) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer overflow-hidden whitespace-nowrap ${
+    `flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors cursor-pointer overflow-hidden whitespace-nowrap rounded-lg ${
       isActive(path)
         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
         : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -151,11 +151,11 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   return (
     <aside className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 overflow-hidden ${isCollapsed ? 'w-[68px]' : 'w-64'}`}>
       {/* Logo and Toggle */}
-      <div className="relative flex h-16 items-center px-3">
+      <div className="relative flex items-center h-14 mt-4 px-3">
         {/* Full VROOM logo - fades out when collapsed */}
         <Link 
           href="/events" 
-          className={`flex items-center px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${
+          className={`flex items-center h-10 px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${
             isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}
         >
@@ -165,7 +165,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
         {/* Small "V" logo button - fades in when collapsed, fixed position */}
         <button
           onClick={toggleCollapsed}
-          className={`group absolute left-3 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${
+          className={`group absolute left-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${
             isCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           title="Expand sidebar"
@@ -184,7 +184,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
         {/* Collapse toggle - right side when expanded */}
         <button
           onClick={toggleCollapsed}
-          className={`absolute right-3 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer transition-opacity duration-300 ${
+          className={`absolute right-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer transition-opacity duration-300 ${
             isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
           }`}
           title="Collapse sidebar"
@@ -375,7 +375,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
       </nav>
 
       {/* Personal Info and User section */}
-      <div className="p-3 space-y-1">
+      <div className="px-3 py-3 space-y-1">
         {/* Personal Info */}
         <Link href="/profile" className={linkClass('/profile')} title={isCollapsed ? 'Personal Info' : undefined}>
           <svg
@@ -395,40 +395,45 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
         </Link>
         <DropdownMenu>
           <DropdownMenuTrigger 
-            className="flex w-full items-center gap-3 rounded-lg p-2 hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden"
+            className={`flex items-center rounded-lg hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden transition-all duration-300 ${isCollapsed ? 'p-1' : 'w-full gap-3 px-3 py-2'}`}
             title={isCollapsed ? displayName : undefined}
           >
             {user.user_metadata?.avatar_url && !avatarError ? (
               <img
                 src={user.user_metadata.avatar_url}
                 alt={displayName}
-                className="h-9 w-9 rounded-full flex-shrink-0"
+                className="h-9 w-9 min-h-9 min-w-9 rounded-full flex-shrink-0 object-cover"
+                referrerPolicy="no-referrer"
                 onError={() => setAvatarError(true)}
               />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-foreground text-sm font-medium text-sidebar flex-shrink-0">
+              <div className="flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-full bg-sidebar-foreground text-sm font-medium text-sidebar flex-shrink-0">
                 {getInitials()}
               </div>
             )}
-            <div className={`flex flex-1 flex-col items-start text-left whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-              <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
-              <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
-                {user.email}
-              </span>
-            </div>
-            <svg
-              className={`h-4 w-4 text-sidebar-foreground/60 flex-shrink-0 transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M8 9l4-4 4 4m0 6l-4 4-4-4"
-              />
-            </svg>
+            {!isCollapsed && (
+              <>
+                <div className="flex flex-1 flex-col items-start text-left whitespace-nowrap">
+                  <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
+                  <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
+                    {user.email}
+                  </span>
+                </div>
+                <svg
+                  className="h-4 w-4 text-sidebar-foreground/60 flex-shrink-0"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 9l4-4 4 4m0 6l-4 4-4-4"
+                  />
+                </svg>
+              </>
+            )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" side="top" className="w-56">
             <DropdownMenuItem
