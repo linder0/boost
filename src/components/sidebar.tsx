@@ -165,7 +165,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
         {/* Small "V" logo button - fades in when collapsed, fixed position */}
         <button
           onClick={toggleCollapsed}
-          className={`group absolute left-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${
+          className={`group absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${
             isCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
           title="Expand sidebar"
