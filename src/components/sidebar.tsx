@@ -151,11 +151,9 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   }
 
   // Link class - icons stay fixed, rounded highlights
-  // Use justify-center when collapsed to center icon, justify-start when expanded
+  // Use consistent pl-3 (12px) which centers the icon (20px) in the collapsed 44px container: (44-20)/2 = 12px
   const linkClass = (path: string) =>
-    `flex items-center gap-3 py-3 text-sm font-medium cursor-pointer overflow-hidden whitespace-nowrap rounded-lg transition-all duration-300 ${
-      isCollapsed ? 'justify-center px-0' : 'justify-start px-3'
-    } ${
+    `flex items-center gap-3 py-3 pl-3 pr-3 text-sm font-medium cursor-pointer overflow-hidden whitespace-nowrap rounded-lg transition-all duration-300 ${
       isActive(path)
         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
         : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -388,7 +386,7 @@ function UserMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className={`flex items-center rounded-lg hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden ${isCollapsed ? 'p-1' : 'w-full gap-3 px-3 py-2'}`}
+        className="flex items-center gap-3 w-full pl-[3.5px] pr-3 py-2 rounded-lg hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden transition-all duration-300"
         title={isCollapsed ? displayName : undefined}
       >
         {user.user_metadata?.avatar_url && !avatarError ? (
@@ -404,17 +402,13 @@ function UserMenu({
             {getInitials()}
           </div>
         )}
-        {!isCollapsed && (
-          <>
-            <div className="flex flex-1 flex-col items-start text-left whitespace-nowrap">
-              <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
-              <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
-                {user.email}
-              </span>
-            </div>
-            <ChevronUpDownIcon className="text-sidebar-foreground/60 flex-shrink-0" />
-          </>
-        )}
+        <div className={`flex flex-1 flex-col items-start text-left whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100'}`}>
+          <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
+          <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
+            {user.email}
+          </span>
+        </div>
+        <ChevronUpDownIcon className={`text-sidebar-foreground/60 flex-shrink-0 transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="center" side="top" className="w-56">
         <DropdownMenuItem onClick={onProfileClick} className="cursor-pointer">
