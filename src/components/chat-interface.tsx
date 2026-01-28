@@ -176,14 +176,14 @@ export function ChatInterface({ eventId, initialMessages }: ChatInterfaceProps) 
 
       {/* Input Area - ChatGPT style */}
       <div className="p-4 pb-6 max-w-3xl mx-auto w-full">
-        <div className="relative flex items-center gap-2 rounded-2xl border bg-background shadow-sm px-4 py-2 transition-colors focus-within:border-foreground/30">
+        <div className="relative flex items-center gap-2 rounded-2xl border bg-background shadow-sm px-4 py-2">
           <Textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Message Event Assistant..."
-            className="flex-1 min-h-[24px] max-h-[200px] resize-none border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0"
+            className="flex-1 min-h-[24px] max-h-[200px] resize-none !border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 p-0 !outline-none !shadow-none self-center leading-normal"
             rows={1}
             disabled={isLoading}
           />

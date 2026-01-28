@@ -50,8 +50,8 @@ export default async function RootLayout({
         {user ? (
           <div className="flex h-screen">
             <Sidebar user={user} events={events} />
-            <main className="flex-1 overflow-hidden bg-sidebar pt-4 pr-4 pb-4">
-              <div className="h-full rounded-2xl bg-white overflow-auto overscroll-contain">
+            <main className="flex-1 overflow-hidden bg-sidebar pt-4 pr-4">
+              <div className="h-full rounded-t-2xl bg-white overflow-auto overscroll-contain">
                 {children}
               </div>
             </main>

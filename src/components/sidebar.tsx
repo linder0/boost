@@ -15,9 +15,21 @@ import {
 import { Input } from './ui/input'
 import { Event } from '@/types/database'
 import { createEmptyEvent, deleteEvent, updateEventSettings } from '@/app/actions/events'
+import {
+  HomeIcon,
+  PlusIcon,
+  DocumentIcon,
+  CalendarIcon,
+  MoreDotsIcon,
+  EditIcon,
+  TrashIcon,
+  ChevronUpDownIcon,
+  SignOutIcon,
+} from './ui/icons'
+import type { User } from '@supabase/supabase-js'
 
 interface SidebarProps {
-  user: any
+  user: User
   events?: Pick<Event, 'id' | 'name'>[]
 }
 
@@ -29,13 +41,13 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   const [editingEventId, setEditingEventId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
-  
+
   // Sidebar collapse state with localStorage persistence
   const [isCollapsed, setIsCollapsed] = useState(false)
-  
+
   // Avatar error state - fallback to initials if image fails to load
   const [avatarError, setAvatarError] = useState(false)
-  
+
   // Load collapsed state from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed')
@@ -43,7 +55,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
       setIsCollapsed(saved === 'true')
     }
   }, [])
-  
+
   const toggleCollapsed = () => {
     const newState = !isCollapsed
     setIsCollapsed(newState)
@@ -74,7 +86,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
       cancelEditing()
       return
     }
-    
+
     try {
       await updateEventSettings(eventId, { name: trimmedName })
       router.refresh()
@@ -115,6 +127,16 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
     }
   }
 
+  const handleDeleteEvent = async (eventId: string) => {
+    if (confirm('Are you sure you want to delete this event?')) {
+      await deleteEvent(eventId)
+      router.refresh()
+      if (pathname.startsWith(`/events/${eventId}`)) {
+        router.push('/events')
+      }
+    }
+  }
+
   if (!user) return null
 
   const isActive = (path: string) => {
@@ -129,8 +151,11 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   }
 
   // Link class - icons stay fixed, rounded highlights
+  // Use justify-center when collapsed to center icon, justify-start when expanded
   const linkClass = (path: string) =>
-    `flex items-center gap-3 px-3 py-3 text-sm font-medium transition-colors cursor-pointer overflow-hidden whitespace-nowrap rounded-lg ${
+    `flex items-center gap-3 py-3 text-sm font-medium cursor-pointer overflow-hidden whitespace-nowrap rounded-lg transition-all duration-300 ${
+      isCollapsed ? 'justify-center px-0' : 'justify-start px-3'
+    } ${
       isActive(path)
         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
         : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
@@ -151,28 +176,24 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
   return (
     <aside className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 overflow-hidden ${isCollapsed ? 'w-[68px]' : 'w-64'}`}>
       {/* Logo and Toggle */}
-      <div className="relative flex items-center h-14 mt-4 px-3">
-        {/* Full VROOM logo - fades out when collapsed */}
-        <Link 
-          href="/events" 
-          className={`flex items-center h-10 px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          }`}
+      <div className="relative flex items-center h-14 mt-4 px-3.5">
+        {/* Full VROOM logo - hidden when collapsed */}
+        <Link
+          href="/events"
+          className={`flex items-center h-10 px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           <span className="text-xl text-sidebar-foreground" style={{ fontFamily: 'var(--font-brand)', fontWeight: 700, fontStyle: 'italic' }}>VROOM</span>
         </Link>
 
-        {/* Small "V" logo button - fades in when collapsed, fixed position */}
+        {/* Small "V" logo button - shown when collapsed, fixed position to prevent sliding */}
         <button
           onClick={toggleCollapsed}
-          className={`group absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'
-          }`}
+          className={`group absolute left-[14px] top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${isCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           title="Expand sidebar"
         >
           {/* Small "V" logo - hidden on hover */}
-          <span 
-            className="text-lg font-bold italic group-hover:opacity-0 transition-opacity" 
+          <span
+            className="text-lg font-bold italic group-hover:opacity-0 transition-opacity"
             style={{ fontFamily: 'var(--font-brand)' }}
           >
             V
@@ -184,9 +205,7 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
         {/* Collapse toggle - right side when expanded */}
         <button
           onClick={toggleCollapsed}
-          className={`absolute right-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
-          }`}
+          className={`absolute right-3 top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           title="Collapse sidebar"
         >
           <PanelLeftClose className="h-5 w-5" />
@@ -197,20 +216,8 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         <div className="space-y-1">
           <Link href="/events" className={linkClass('/events')} title={isCollapsed ? 'Dashboard' : undefined}>
-            <svg
-              className="h-5 w-5 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-              />
-            </svg>
-            <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>Dashboard</span>
+            <HomeIcon className="flex-shrink-0" />
+            <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>Dashboard</span>
           </Link>
           <button
             onClick={handleNewEvent}
@@ -218,26 +225,14 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
             className={`w-full ${linkClass('/events/new')}`}
             title={isCollapsed ? 'New Event' : undefined}
           >
-            <svg
-              className="h-5 w-5 flex-shrink-0"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>{creatingEvent ? 'Creating...' : 'New Event'}</span>
+            <PlusIcon className="flex-shrink-0" />
+            <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>{creatingEvent ? 'Creating...' : 'New Event'}</span>
           </button>
         </div>
 
         {/* Events list - fades in/out with the width animation */}
         {events.length > 0 && (
-          <div 
+          <div
             className={`mt-6 whitespace-nowrap transition-opacity duration-300 ${
               isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'
             }`}
@@ -247,237 +242,194 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
             </h3>
             <div className="space-y-1">
               {events.map((event) => (
-                <div
+                <EventListItem
                   key={event.id}
-                  className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    isEventActive(event.id)
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
-                  }`}
-                >
-                  {editingEventId === event.id ? (
-                    <div className="flex flex-1 items-center gap-3">
-                      <svg
-                        className="h-4 w-4 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                      <Input
-                        ref={editInputRef}
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        onBlur={() => saveEventName(event.id)}
-                        onKeyDown={(e) => handleEditKeyDown(e, event.id)}
-                        className="h-6 py-0 px-1 text-sm bg-sidebar border-sidebar-ring"
-                      />
-                    </div>
-                  ) : (
-                    <Link
-                      href={`/events/${event.id}`}
-                      className="flex flex-1 items-center gap-3 cursor-pointer"
-                    >
-                      <svg
-                        className="h-4 w-4 flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                      <span className="truncate">{event.name}</span>
-                    </Link>
-                  )}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 p-1 rounded hover:bg-sidebar-accent cursor-pointer">
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-                        />
-                      </svg>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" side="right" className="w-40">
-                      <DropdownMenuItem
-                        onClick={() => startEditing(event)}
-                        className="cursor-pointer"
-                      >
-                        <svg
-                          className="mr-2 h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                          />
-                        </svg>
-                        Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={async () => {
-                          if (confirm('Are you sure you want to delete this event?')) {
-                            await deleteEvent(event.id)
-                            router.refresh()
-                            if (pathname.startsWith(`/events/${event.id}`)) {
-                              router.push('/events')
-                            }
-                          }
-                        }}
-                        className="cursor-pointer text-destructive focus:text-destructive"
-                      >
-                        <svg
-                          className="mr-2 h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                          />
-                        </svg>
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                  event={event}
+                  isActive={isEventActive(event.id)}
+                  isEditing={editingEventId === event.id}
+                  editingName={editingName}
+                  editInputRef={editInputRef}
+                  onEditingNameChange={setEditingName}
+                  onSave={() => saveEventName(event.id)}
+                  onKeyDown={(e) => handleEditKeyDown(e, event.id)}
+                  onStartEditing={() => startEditing(event)}
+                  onDelete={() => handleDeleteEvent(event.id)}
+                />
               ))}
             </div>
           </div>
         )}
-
       </nav>
 
       {/* Personal Info and User section */}
       <div className="px-3 py-3 space-y-1">
         {/* Personal Info */}
         <Link href="/profile" className={linkClass('/profile')} title={isCollapsed ? 'Personal Info' : undefined}>
-          <svg
-            className="h-5 w-5 flex-shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-            />
-          </svg>
-          <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0' : 'opacity-100'}`}>Personal Info</span>
+          <DocumentIcon className="flex-shrink-0" />
+          <span className={`whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 w-0' : 'opacity-100'}`}>Personal Info</span>
         </Link>
-        <DropdownMenu>
-          <DropdownMenuTrigger 
-            className={`flex items-center rounded-lg hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden transition-all duration-300 ${isCollapsed ? 'p-1' : 'w-full gap-3 px-3 py-2'}`}
-            title={isCollapsed ? displayName : undefined}
-          >
-            {user.user_metadata?.avatar_url && !avatarError ? (
-              <img
-                src={user.user_metadata.avatar_url}
-                alt={displayName}
-                className="h-9 w-9 min-h-9 min-w-9 rounded-full flex-shrink-0 object-cover"
-                referrerPolicy="no-referrer"
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              <div className="flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-full bg-sidebar-foreground text-sm font-medium text-sidebar flex-shrink-0">
-                {getInitials()}
-              </div>
-            )}
-            {!isCollapsed && (
-              <>
-                <div className="flex flex-1 flex-col items-start text-left whitespace-nowrap">
-                  <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
-                  <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
-                    {user.email}
-                  </span>
-                </div>
-                <svg
-                  className="h-4 w-4 text-sidebar-foreground/60 flex-shrink-0"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 9l4-4 4 4m0 6l-4 4-4-4"
-                  />
-                </svg>
-              </>
-            )}
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" side="top" className="w-56">
-            <DropdownMenuItem
-              onClick={() => router.push('/profile')}
-              className="cursor-pointer"
-            >
-              <svg
-                className="mr-2 h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-              Personal Info
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={handleSignOut}
-              className="cursor-pointer text-destructive focus:text-destructive"
-            >
-              <svg
-                className="mr-2 h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
-              Sign Out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <UserMenu
+          user={user}
+          displayName={displayName}
+          avatarError={avatarError}
+          isCollapsed={isCollapsed}
+          getInitials={getInitials}
+          onAvatarError={() => setAvatarError(true)}
+          onProfileClick={() => router.push('/profile')}
+          onSignOut={handleSignOut}
+        />
       </div>
     </aside>
+  )
+}
+
+// ============================================================================
+// Subcomponents
+// ============================================================================
+
+interface EventListItemProps {
+  event: Pick<Event, 'id' | 'name'>
+  isActive: boolean
+  isEditing: boolean
+  editingName: string
+  editInputRef: React.RefObject<HTMLInputElement | null>
+  onEditingNameChange: (name: string) => void
+  onSave: () => void
+  onKeyDown: (e: React.KeyboardEvent) => void
+  onStartEditing: () => void
+  onDelete: () => void
+}
+
+function EventListItem({
+  event,
+  isActive,
+  isEditing,
+  editingName,
+  editInputRef,
+  onEditingNameChange,
+  onSave,
+  onKeyDown,
+  onStartEditing,
+  onDelete,
+}: EventListItemProps) {
+  return (
+    <div
+      className={`group flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+        isActive
+          ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+          : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+      }`}
+    >
+      {isEditing ? (
+        <div className="flex flex-1 items-center gap-3">
+          <CalendarIcon className="flex-shrink-0" />
+          <Input
+            ref={editInputRef}
+            value={editingName}
+            onChange={(e) => onEditingNameChange(e.target.value)}
+            onBlur={onSave}
+            onKeyDown={onKeyDown}
+            className="h-6 py-0 px-1 text-sm bg-sidebar border-sidebar-ring"
+          />
+        </div>
+      ) : (
+        <Link
+          href={`/events/${event.id}`}
+          className="flex flex-1 items-center gap-3 cursor-pointer"
+        >
+          <CalendarIcon className="flex-shrink-0" />
+          <span className="truncate">{event.name}</span>
+        </Link>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 p-1 rounded hover:bg-sidebar-accent cursor-pointer">
+          <MoreDotsIcon />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="right" className="w-40">
+          <DropdownMenuItem onClick={onStartEditing} className="cursor-pointer">
+            <EditIcon className="mr-2" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={onDelete}
+            className="cursor-pointer text-destructive focus:text-destructive"
+          >
+            <TrashIcon className="mr-2" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+interface UserMenuProps {
+  user: User
+  displayName: string
+  avatarError: boolean
+  isCollapsed: boolean
+  getInitials: () => string
+  onAvatarError: () => void
+  onProfileClick: () => void
+  onSignOut: () => void
+}
+
+function UserMenu({
+  user,
+  displayName,
+  avatarError,
+  isCollapsed,
+  getInitials,
+  onAvatarError,
+  onProfileClick,
+  onSignOut,
+}: UserMenuProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={`flex items-center rounded-lg hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden ${isCollapsed ? 'p-1' : 'w-full gap-3 px-3 py-2'}`}
+        title={isCollapsed ? displayName : undefined}
+      >
+        {user.user_metadata?.avatar_url && !avatarError ? (
+          <img
+            src={user.user_metadata.avatar_url}
+            alt={displayName}
+            className="h-9 w-9 min-h-9 min-w-9 rounded-full flex-shrink-0 object-cover"
+            referrerPolicy="no-referrer"
+            onError={onAvatarError}
+          />
+        ) : (
+          <div className="flex h-9 w-9 min-h-9 min-w-9 items-center justify-center rounded-full bg-sidebar-foreground text-sm font-medium text-sidebar flex-shrink-0">
+            {getInitials()}
+          </div>
+        )}
+        {!isCollapsed && (
+          <>
+            <div className="flex flex-1 flex-col items-start text-left whitespace-nowrap">
+              <span className="text-sm font-medium text-sidebar-foreground">{displayName}</span>
+              <span className="text-xs text-sidebar-foreground/60 truncate max-w-[140px]">
+                {user.email}
+              </span>
+            </div>
+            <ChevronUpDownIcon className="text-sidebar-foreground/60 flex-shrink-0" />
+          </>
+        )}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="center" side="top" className="w-56">
+        <DropdownMenuItem onClick={onProfileClick} className="cursor-pointer">
+          <DocumentIcon className="mr-2 h-4 w-4" />
+          Personal Info
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={onSignOut}
+          className="cursor-pointer text-destructive focus:text-destructive"
+        >
+          <SignOutIcon className="mr-2" />
+          Sign Out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

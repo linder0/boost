@@ -12,6 +12,7 @@ import { revalidatePath } from 'next/cache'
 import { isValidUUID } from '@/lib/utils'
 import { generateOutreachMessage } from '@/lib/ai/outreach-generator'
 import { findMatchingVenues, DemoVenue } from '@/lib/demo/venues'
+import { discoverVenues, DiscoveredVenue } from '@/lib/discovery'
 
 export async function createVendor(
   eventId: string,
@@ -160,8 +161,9 @@ export async function deleteVendor(vendorId: string) {
 }
 
 export async function discoverVenuesForEvent(eventId: string): Promise<{
-  venues: DemoVenue[]
+  venues: (DemoVenue | DiscoveredVenue)[]
   event: { city: string; headcount: number; budget: number }
+  source: 'google_places' | 'demo'
 }> {
   if (!isValidUUID(eventId)) {
     throw new Error('Invalid event ID')
@@ -171,6 +173,37 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
 
   const event = await verifyEventOwnership(supabase, eventId, user.id)
 
+  // Try real discovery first (Google Places + Hunter)
+  const hasGooglePlacesKey = !!process.env.GOOGLE_PLACES_API_KEY
+  
+  if (hasGooglePlacesKey) {
+    try {
+      // Get venue types from event constraints, or use defaults
+      const venueTypes = event.constraints?.venue_types || ['restaurant', 'bar', 'rooftop']
+      
+      const discoveredVenues = await discoverVenues(
+        event.city,
+        venueTypes,
+        20 // Limit results
+      )
+
+      if (discoveredVenues.length > 0) {
+        return {
+          venues: discoveredVenues,
+          event: {
+            city: event.city,
+            headcount: event.headcount,
+            budget: event.total_budget,
+          },
+          source: 'google_places',
+        }
+      }
+    } catch (error) {
+      console.error('Real discovery failed, falling back to demo data:', error)
+    }
+  }
+
+  // Fallback to demo venues
   const venues = findMatchingVenues({
     city: event.city,
     headcount: event.headcount,
@@ -190,6 +223,7 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
       headcount: event.headcount,
       budget: event.total_budget,
     },
+    source: 'demo',
   }
 }
 

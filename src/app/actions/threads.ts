@@ -127,3 +127,34 @@ export async function bulkStartOutreach(eventId: string) {
 
 // Alias for semantic clarity in venue discovery flow
 export const startOutreachForEvent = bulkStartOutreach
+
+export async function startOutreachByCategory(eventId: string, category: string) {
+  const { supabase, user } = await getAuthenticatedClient()
+
+  // Get all vendors with NOT_CONTACTED status in the specified category
+  const { data: vendors, error } = await supabase
+    .from('vendors')
+    .select('id, vendor_threads!inner(status)')
+    .eq('event_id', eventId)
+    .eq('category', category)
+    .eq('vendor_threads.status', 'NOT_CONTACTED')
+
+  handleSupabaseError(error, 'Failed to fetch vendors')
+  const vendorList = vendors ?? []
+
+  // Trigger outreach for all vendors in this category
+  const promises = vendorList.map((vendor) =>
+    inngest.send({
+      name: 'vendor.outreach.start',
+      data: {
+        vendorId: vendor.id,
+        userId: user.id,
+      },
+    })
+  )
+
+  await Promise.all(promises)
+
+  revalidatePath(`/events/${eventId}/vendors`)
+  return { success: true, count: vendorList.length }
+}
