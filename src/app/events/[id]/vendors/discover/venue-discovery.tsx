@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { Search } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -15,11 +17,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { createVendorsFromDiscovery } from '@/app/actions/vendors'
-import { startOutreachForEvent } from '@/app/actions/threads'
+// Note: Outreach is simulated on the vendors page for demo purposes
 import { DemoVenue, demoVenueToVendor } from '@/lib/demo/venues'
 import { formatCurrency } from '@/lib/utils'
 import { DiscoveredVenue } from '@/lib/discovery'
 import { DiscoveryLog, LogEntry } from '@/components/discovery-log'
+import { sortCategories, groupByCategory, getCategoryLabel, type EntityCategory } from '@/lib/entities'
 
 type VenueItem = DemoVenue | DiscoveredVenue
 
@@ -32,6 +35,7 @@ interface VenueDiscoveryProps {
   initialVenues?: VenueItem[]
   discoverySource?: 'google_places' | 'demo'
   existingVendorEmails?: string[]
+  categoryFilter?: EntityCategory
 }
 
 // Type guard to check if a venue is a DiscoveredVenue
@@ -54,6 +58,7 @@ export function VenueDiscovery({
   initialVenues = [],
   discoverySource,
   existingVendorEmails = [],
+  categoryFilter,
 }: VenueDiscoveryProps) {
   // Create a Set for O(1) lookup of existing vendors
   const existingEmailsSet = new Set(existingVendorEmails.map(e => e.toLowerCase()))
@@ -97,7 +102,10 @@ export function VenueDiscovery({
     setError(null)
 
     try {
-      const response = await fetch(`/api/discover?eventId=${eventId}`)
+      const url = categoryFilter 
+        ? `/api/discover?eventId=${eventId}&category=${encodeURIComponent(categoryFilter)}`
+        : `/api/discover?eventId=${eventId}`
+      const response = await fetch(url)
 
       if (!response.ok) {
         throw new Error('Failed to start discovery')
@@ -130,7 +138,24 @@ export function VenueDiscovery({
                   break
 
                 case 'venue':
-                  setVenues((prev) => [...prev, event.data as DiscoveredVenue])
+                  // Add venue with deduplication by email and name
+                  setVenues((prev) => {
+                    const newVenue = event.data as DiscoveredVenue
+                    const emailLower = newVenue.email.toLowerCase()
+                    const nameLower = newVenue.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+                    
+                    // Check if we already have this venue
+                    const isDuplicate = prev.some((v) => {
+                      const existingEmail = v.email.toLowerCase()
+                      const existingName = v.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+                      return existingEmail === emailLower || existingName === nameLower
+                    })
+                    
+                    if (isDuplicate) {
+                      return prev
+                    }
+                    return [...prev, newVenue]
+                  })
                   break
 
                 case 'venue_updated':
@@ -167,7 +192,7 @@ export function VenueDiscovery({
     } finally {
       setIsDiscovering(false)
     }
-  }, [eventId, addLog, venues])
+  }, [eventId, addLog, venues, categoryFilter])
 
   const toggleVenue = (email: string) => {
     const newSelected = new Set(selectedVenues)
@@ -203,10 +228,10 @@ export function VenueDiscovery({
 
       await createVendorsFromDiscovery(eventId, vendorsToCreate)
 
-      if (startOutreach) {
-        await startOutreachForEvent(eventId)
-      }
-
+      // Note: Outreach is now simulated on the vendors page for demo purposes
+      // The startOutreach parameter is ignored - users can click "Start Outreach" 
+      // on the vendors page to see the simulation
+      
       router.push(`/events/${eventId}/vendors`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to add vendors'
@@ -216,12 +241,21 @@ export function VenueDiscovery({
     }
   }
 
+  // Dynamic heading based on category filter
+  const headingText = categoryFilter 
+    ? `Discover ${getCategoryLabel(categoryFilter, true)}`
+    : 'Discover Venues & Vendors'
+  
+  const descriptionText = categoryFilter
+    ? `Find ${getCategoryLabel(categoryFilter, true).toLowerCase()} for your event in ${city}`
+    : `Find venues and vendors for your event in ${city}`
+
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">Discover Venues & Vendors</h1>
+            <h1 className="text-2xl font-bold">{headingText}</h1>
             {hasDiscovered && discoverySource === 'google_places' && (
               <Badge variant="default" className="bg-blue-600">
                 Google Places
@@ -229,7 +263,7 @@ export function VenueDiscovery({
             )}
           </div>
           <p className="text-muted-foreground">
-            Find venues and vendors for your event in {city}
+            {descriptionText}
           </p>
         </div>
         <Button
@@ -265,22 +299,13 @@ export function VenueDiscovery({
           
           {/* Group venues by category */}
           {(() => {
-            // Group venues by category
-            const grouped = venues.reduce((acc, venue) => {
-              const cat = venue.category || 'Other'
-              if (!acc[cat]) acc[cat] = []
-              acc[cat].push(venue)
-              return acc
-            }, {} as Record<string, VenueItem[]>)
+            // Group venues by category using shared utility
+            const grouped = groupByCategory(venues)
             
-            // Sort categories: Venue first, then alphabetically
-            const sortedCategories = Object.keys(grouped).sort((a, b) => {
-              if (a === 'Venue') return -1
-              if (b === 'Venue') return 1
-              return a.localeCompare(b)
-            })
+            // Sort categories using shared utility
+            const sortedCats = sortCategories(Object.keys(grouped))
             
-            return sortedCategories.map(category => {
+            return sortedCats.map(category => {
               const categoryVenues = grouped[category]
               const categorySelected = categoryVenues.filter(v => selectedVenues.has(v.email)).length
               
@@ -400,6 +425,13 @@ export function VenueDiscovery({
                       </TableBody>
                     </Table>
                   </div>
+                  <Link 
+                    href={`/events/${eventId}/vendors/discover?category=${encodeURIComponent(category)}`}
+                    className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    Find more {getCategoryLabel(category as EntityCategory, true).toLowerCase()}
+                  </Link>
                 </div>
               )
             })
@@ -420,20 +452,9 @@ export function VenueDiscovery({
                   disabled={loading || selectedVenues.size === 0}
                   className="flex-1"
                 >
-                  {loading ? 'Adding...' : `Add ${selectedVenues.size} Venues & Start Outreach`}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => handleAddVendors(false)}
-                  disabled={loading || selectedVenues.size === 0}
-                >
-                  Add Without Outreach
+                  {loading ? 'Adding...' : `Add ${selectedVenues.size} ${selectedVenues.size === 1 ? 'Venue' : 'Venues'} & Start Outreach`}
                 </Button>
               </div>
-
-              <p className="text-center text-sm text-muted-foreground">
-                Starting outreach will automatically send inquiry emails to all selected venues
-              </p>
             </>
           )}
         </div>

@@ -5,10 +5,17 @@
 
 import { searchVenues, GooglePlaceVenue } from './google-places'
 import { findEmail, findEmailsBatch, HunterEmailResult } from './hunter'
+import { 
+  estimatePriceRange, 
+  extractNeighborhood, 
+  generatePlaceholderEmail,
+  DEFAULT_VENUE_TYPES,
+} from './utils'
 import { DemoVenue } from '@/lib/demo/venues'
 
 export { searchVenues, GooglePlaceVenue } from './google-places'
 export { findEmail, findEmailsBatch, HunterEmailResult } from './hunter'
+export * from './utils'
 
 export interface DiscoveredVenue extends DemoVenue {
   googlePlaceId?: string
@@ -16,33 +23,7 @@ export interface DiscoveredVenue extends DemoVenue {
   discoverySource: 'google_places' | 'demo'
   website?: string
   rating?: number
-}
-
-// Default venue type mapping based on price level
-function estimatePriceRange(priceLevel?: number): { min: number; max: number } {
-  switch (priceLevel) {
-    case 0:
-    case 1:
-      return { min: 30, max: 60 }
-    case 2:
-      return { min: 60, max: 100 }
-    case 3:
-      return { min: 100, max: 175 }
-    case 4:
-      return { min: 150, max: 250 }
-    default:
-      return { min: 75, max: 150 }
-  }
-}
-
-// Extract neighborhood from address
-function extractNeighborhood(address: string): string | undefined {
-  // Try to extract neighborhood from address (usually before city)
-  const parts = address.split(',').map((p) => p.trim())
-  if (parts.length >= 3) {
-    return parts[1] // Usually neighborhood is second part
-  }
-  return undefined
+  phone?: string
 }
 
 /**
@@ -51,7 +32,7 @@ function extractNeighborhood(address: string): string | undefined {
  */
 export async function discoverVenues(
   city: string,
-  venueTypes: string[] = ['restaurant', 'bar', 'rooftop'],
+  venueTypes: string[] = DEFAULT_VENUE_TYPES,
   limit = 20
 ): Promise<DiscoveredVenue[]> {
   // Step 1: Search Google Places
@@ -102,20 +83,11 @@ export async function discoverVenues(
       googlePlaceId: venue.googlePlaceId,
       emailConfidence: emailResult?.confidence,
       discoverySource: 'google_places',
+      website: venue.website,
+      rating: venue.rating,
+      phone: venue.phone,
     }
   })
 
   return discoveredVenues
-}
-
-/**
- * Generate a placeholder email for venues where we couldn't find a real one
- * This is just for demo purposes - in production you'd handle this differently
- */
-function generatePlaceholderEmail(venueName: string): string {
-  const slug = venueName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-    .slice(0, 20)
-  return `events@${slug}.com`
 }

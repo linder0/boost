@@ -35,7 +35,17 @@ export type LogEventType =
   | 'REPLY' 
   | 'PARSE' 
   | 'DECISION' 
-  | 'ESCALATION';
+  | 'ESCALATION'
+  | 'DISCOVERY'
+  | 'APPROVAL'
+  | 'HUMAN_RESPONSE';
+
+export type EscalationCategory =
+  | 'low_confidence'
+  | 'vendor_questions'
+  | 'missing_info'
+  | 'budget_edge'
+  | 'custom';
 
 export type ChatRole = 
   | 'user' 
@@ -74,6 +84,8 @@ export interface Event {
   updated_at: string;
 }
 
+export type DiscoverySourceType = 'google_places' | 'manual' | 'csv' | 'demo';
+
 export interface Vendor {
   id: string;
   event_id: string;
@@ -84,8 +96,21 @@ export interface Vendor {
   latitude?: number | null;
   longitude?: number | null;
   custom_message?: string | null;
+  // Discovery metadata fields
+  website?: string | null;
+  rating?: number | null;
+  email_confidence?: number | null;
+  google_place_id?: string | null;
+  phone?: string | null;
+  discovery_source?: DiscoverySourceType | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AutomationStep {
+  type: LogEventType;
+  timestamp: string;
+  details: Record<string, unknown>;
 }
 
 export interface VendorThread {
@@ -98,8 +123,15 @@ export interface VendorThread {
   reason: string | null;
   last_touch: string | null;
   escalation_reason: string | null;
+  escalation_category: EscalationCategory | null;
   follow_up_count: number;
   gmail_thread_id: string | null;
+  // Approval workflow fields
+  outreach_approved: boolean;
+  outreach_approved_at: string | null;
+  outreach_approved_by: string | null;
+  // Automation history
+  automation_history: AutomationStep[];
   created_at: string;
   updated_at: string;
 }
@@ -131,12 +163,20 @@ export interface ParsedResponse {
   created_at: string;
 }
 
+export interface SuggestedAction {
+  label: string;
+  type: 'reply' | 'approve' | 'reject' | 'negotiate';
+  draftMessage?: string;
+  confidence: number;
+}
+
 export interface Decision {
   id: string;
   parsed_response_id: string;
   outcome: DecisionOutcome;
   reason: string;
   proposed_next_action: string | null;
+  suggested_actions: SuggestedAction[];
   created_at: string;
 }
 

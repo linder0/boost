@@ -1,7 +1,7 @@
 import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
 import { parseVendorEmail, calculateConfidenceScore } from '@/lib/ai/parser'
-import { normalizeJoinResult } from '@/lib/utils'
+import { extractThreadVendorEvent, logAutomation, updateThreadStatus } from '../utils'
 
 export const parseResponse = inngest.createFunction(
   {
@@ -40,10 +40,7 @@ export const parseResponse = inngest.createFunction(
 
     // Parse the email using OpenAI
     const parsed = await step.run('parse-with-openai', async () => {
-      const thread = normalizeJoinResult(data.vendor_threads)!
-      const vendor = normalizeJoinResult(thread.vendors)!
-      const event = normalizeJoinResult(vendor.events)!
-
+      const { event } = extractThreadVendorEvent(data)
       return await parseVendorEmail(data.body, event)
     })
 
@@ -79,23 +76,17 @@ export const parseResponse = inngest.createFunction(
     // Update thread confidence
     await step.run('update-thread-confidence', async () => {
       const supabase = await createClient()
-
-      await supabase
-        .from('vendor_threads')
-        .update({
-          confidence: confidence.toUpperCase(),
-        })
-        .eq('id', threadId)
+      await updateThreadStatus(supabase, threadId, {
+        confidence: confidence.toUpperCase(),
+      })
     })
 
     // Log the parsing
     await step.run('log-parsing', async () => {
       const supabase = await createClient()
+      const { vendor } = extractThreadVendorEvent(data)
 
-      const thread = normalizeJoinResult(data.vendor_threads)!
-      const vendor = normalizeJoinResult(thread.vendors)!
-
-      await supabase.from('automation_logs').insert({
+      await logAutomation(supabase, {
         event_id: vendor.event_id,
         vendor_id: vendor.id,
         event_type: 'PARSE',

@@ -62,20 +62,20 @@ export function DiscoveryLog({ logs, isActive = false }: DiscoveryLogProps) {
   return (
     <div
       ref={scrollRef}
-      className="h-48 overflow-y-auto bg-zinc-950 font-mono text-sm p-4 space-y-1"
+      className="h-48 overflow-y-auto rounded-md border bg-muted/30 font-mono text-sm p-4 space-y-1"
     >
       {logs.length === 0 ? (
-        <p className="text-zinc-500">Waiting to start discovery...</p>
+        <p className="text-muted-foreground">Waiting to start discovery...</p>
       ) : (
         logs.map((log) => (
           <div key={log.id} className="flex gap-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
-            <span className="text-zinc-500 shrink-0">
+            <span className="text-muted-foreground shrink-0">
               [{formatTime(log.timestamp)}]
             </span>
             <span className={getLevelColor(log.level)}>
               {getLevelIcon(log.level)}
             </span>
-            <span className={log.level === 'success' ? 'text-green-400' : 'text-zinc-300'}>
+            <span className={log.level === 'success' ? 'text-green-600' : 'text-foreground'}>
               {log.message}
             </span>
           </div>
@@ -83,10 +83,10 @@ export function DiscoveryLog({ logs, isActive = false }: DiscoveryLogProps) {
       )}
       {isActive && (
         <div className="flex gap-2 items-center">
-          <span className="text-zinc-500 shrink-0">
+          <span className="text-muted-foreground shrink-0">
             [{formatTime(new Date())}]
           </span>
-          <span className="text-zinc-400 animate-pulse">▊</span>
+          <span className="text-muted-foreground animate-pulse">▊</span>
         </div>
       )}
     </div>

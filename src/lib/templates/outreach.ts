@@ -1,7 +1,11 @@
 import { Event, Vendor } from '@/types/database'
 import { formatPreferredDates, buildConstraintsList } from '@/lib/utils'
 
-export function generateOutreachEmail(event: Event, vendor: Vendor | { name: string }): string {
+export function generateOutreachEmail(
+  event: Event, 
+  vendor: Vendor | { name: string },
+  signature: string = 'Event Planning Team'
+): string {
   const dates = formatPreferredDates(event.preferred_dates)
   const constraints = buildConstraintsList(event.constraints || {})
 
@@ -24,7 +28,7 @@ Could you please confirm:
 I'm hoping to make a decision within the next week, so a quick response would be greatly appreciated.
 
 Best regards,
-Event Planning Team
+${signature}
 
 ---
 This is an automated inquiry. If you have any questions or need clarification, please reply to this email.`

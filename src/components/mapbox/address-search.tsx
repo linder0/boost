@@ -133,7 +133,7 @@ export function AddressSearch({
             <button
               key={suggestion.id}
               type="button"
-              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
               onClick={() => handleSelect(suggestion)}
             >
               {suggestion.place_name}

@@ -3,10 +3,32 @@
 import { getAuthenticatedClient, ensureFound } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+export type AccountType = 'personal' | 'company'
+export type CommunicationTone = 'professional' | 'friendly' | 'casual' | 'formal'
+
 export interface UserProfile {
   id: string
   user_id: string
   context: string | null
+  // Enhanced profile fields
+  account_type: AccountType | null
+  name: string | null
+  email: string | null
+  phone: string | null
+  title: string | null
+  company_name: string | null
+  company_description: string | null
+  industry: string | null
+  website: string | null
+  communication_tone: CommunicationTone | null
+  email_signature: string | null
+  always_include: string | null
+  preferences: Record<string, unknown> | null
+  // Automation settings
+  follow_up_days: number | null
+  max_follow_ups: number | null
+  auto_reject_over_budget: boolean | null
+  auto_respond_viable: boolean | null
   created_at: string
   updated_at: string
 }

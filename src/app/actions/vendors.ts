@@ -1,18 +1,36 @@
 'use server'
 
-import { 
-  getAuthenticatedClient, 
-  verifyEventOwnership, 
+import {
+  getAuthenticatedClient,
+  verifyEventOwnership,
   createVendorThreads,
   handleSupabaseError,
   ensureFound
 } from '@/lib/supabase/server'
 import { Vendor, VendorWithThread, Event } from '@/types/database'
 import { revalidatePath } from 'next/cache'
-import { isValidUUID } from '@/lib/utils'
+import { validateUUID } from '@/lib/utils'
 import { generateOutreachMessage } from '@/lib/ai/outreach-generator'
 import { findMatchingVenues, DemoVenue } from '@/lib/demo/venues'
 import { discoverVenues, DiscoveredVenue } from '@/lib/discovery'
+import type { UserProfile } from '@/app/actions/profile'
+import { SupabaseClient } from '@supabase/supabase-js'
+
+/**
+ * Helper to fetch user profile for message personalization
+ */
+async function fetchUserProfile(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<UserProfile | null> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .single()
+
+  return data as UserProfile | null
+}
 
 export async function createVendor(
   eventId: string,
@@ -69,10 +87,7 @@ export async function bulkCreateVendors(
 }
 
 export async function getVendorsByEvent(eventId: string) {
-  if (!isValidUUID(eventId)) {
-    console.warn('Invalid event ID format:', eventId)
-    return [] as VendorWithThread[]
-  }
+  validateUUID(eventId, 'event ID')
 
   const { supabase } = await getAuthenticatedClient()
 
@@ -165,9 +180,7 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
   event: { city: string; headcount: number; budget: number }
   source: 'google_places' | 'demo'
 }> {
-  if (!isValidUUID(eventId)) {
-    throw new Error('Invalid event ID')
-  }
+  validateUUID(eventId, 'event ID')
 
   const { supabase, user } = await getAuthenticatedClient()
 
@@ -175,12 +188,12 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
 
   // Try real discovery first (Google Places + Hunter)
   const hasGooglePlacesKey = !!process.env.GOOGLE_PLACES_API_KEY
-  
+
   if (hasGooglePlacesKey) {
     try {
       // Get venue types from event constraints, or use defaults
       const venueTypes = event.constraints?.venue_types || ['restaurant', 'bar', 'rooftop']
-      
+
       const discoveredVenues = await discoverVenues(
         event.city,
         venueTypes,
@@ -227,16 +240,26 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
   }
 }
 
+// Input type for vendor discovery with all metadata fields
+export interface DiscoveredVendorInput {
+  name: string
+  category: string
+  contact_email: string
+  address?: string
+  latitude?: number
+  longitude?: number
+  // Discovery metadata fields
+  website?: string
+  rating?: number
+  email_confidence?: number
+  google_place_id?: string
+  phone?: string
+  discovery_source?: string
+}
+
 export async function createVendorsFromDiscovery(
   eventId: string,
-  selectedVenues: { 
-    name: string
-    category: string
-    contact_email: string
-    address?: string
-    latitude?: number
-    longitude?: number
-  }[]
+  selectedVenues: DiscoveredVendorInput[]
 ) {
   if (selectedVenues.length === 0) {
     throw new Error('No venues selected')
@@ -246,7 +269,41 @@ export async function createVendorsFromDiscovery(
 
   const event = await verifyEventOwnership(supabase, eventId, user.id)
 
-  const vendorsToInsert = selectedVenues.map((v) => ({
+  // Get existing vendor emails for this event to prevent duplicates
+  const { data: existingVendors } = await supabase
+    .from('vendors')
+    .select('contact_email')
+    .eq('event_id', eventId)
+
+  const existingEmails = new Set(
+    (existingVendors ?? []).map((v: { contact_email: string }) =>
+      v.contact_email.toLowerCase()
+    )
+  )
+
+  // Filter out venues that already exist (by email)
+  const newVenues = selectedVenues.filter(
+    (v) => !existingEmails.has(v.contact_email.toLowerCase())
+  )
+
+  if (newVenues.length === 0) {
+    // All selected venues already exist
+    revalidatePath(`/events/${eventId}/vendors`)
+    return [] as Vendor[]
+  }
+
+  // Also deduplicate within the selection (keep first occurrence)
+  const seenEmails = new Set<string>()
+  const uniqueVenues = newVenues.filter((v) => {
+    const emailLower = v.contact_email.toLowerCase()
+    if (seenEmails.has(emailLower)) {
+      return false
+    }
+    seenEmails.add(emailLower)
+    return true
+  })
+
+  const vendorsToInsert = uniqueVenues.map((v) => ({
     event_id: eventId,
     name: v.name,
     category: v.category,
@@ -254,6 +311,13 @@ export async function createVendorsFromDiscovery(
     address: v.address || null,
     latitude: v.latitude || null,
     longitude: v.longitude || null,
+    // Discovery metadata
+    website: v.website || null,
+    rating: v.rating || null,
+    email_confidence: v.email_confidence || null,
+    google_place_id: v.google_place_id || null,
+    phone: v.phone || null,
+    discovery_source: v.discovery_source || 'manual',
   }))
 
   const { data: createdVendors, error } = await supabase
@@ -265,19 +329,22 @@ export async function createVendorsFromDiscovery(
   const created = createdVendors ?? []
   await createVendorThreads(supabase, created.map((v: { id: string }) => v.id))
 
+  // Fetch user profile for personalized messages
+  const userProfile = await fetchUserProfile(supabase, user.id)
+
   // Generate AI outreach messages for each vendor (in parallel)
   const messagePromises = created.map(async (vendor: { id: string; name: string; category: string }) => {
     try {
       const message = await generateOutreachMessage(event, {
         name: vendor.name,
         category: vendor.category,
-      })
-      
+      }, userProfile)
+
       await supabase
         .from('vendors')
         .update({ custom_message: message })
         .eq('id', vendor.id)
-      
+
       return { vendorId: vendor.id, success: true }
     } catch (err) {
       console.error(`Failed to generate message for vendor ${vendor.id}:`, err)
@@ -294,11 +361,9 @@ export async function createVendorsFromDiscovery(
 
 // Regenerate AI outreach message for a vendor
 export async function regenerateVendorMessage(vendorId: string) {
-  if (!isValidUUID(vendorId)) {
-    throw new Error('Invalid vendor ID')
-  }
+  validateUUID(vendorId, 'vendor ID')
 
-  const { supabase } = await getAuthenticatedClient()
+  const { supabase, user } = await getAuthenticatedClient()
 
   // Fetch vendor with event data
   const { data: vendor, error: vendorError } = await supabase
@@ -310,11 +375,14 @@ export async function regenerateVendorMessage(vendorId: string) {
   const found = ensureFound(vendor, vendorError, 'Vendor not found')
   const event = found.events as Event
 
-  // Generate new message
+  // Fetch user profile for personalized message
+  const userProfile = await fetchUserProfile(supabase, user.id)
+
+  // Generate new message with user context
   const message = await generateOutreachMessage(event, {
     name: found.name,
     category: found.category,
-  })
+  }, userProfile)
 
   // Update vendor with new message
   const { error: updateError } = await supabase
@@ -330,9 +398,7 @@ export async function regenerateVendorMessage(vendorId: string) {
 
 // Update vendor's custom message manually
 export async function updateVendorMessage(vendorId: string, message: string) {
-  if (!isValidUUID(vendorId)) {
-    throw new Error('Invalid vendor ID')
-  }
+  validateUUID(vendorId, 'vendor ID')
 
   const { supabase } = await getAuthenticatedClient()
 

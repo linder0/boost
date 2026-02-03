@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { Event, VendorWithThread, ChatMessage } from '@/types/database'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, buildConstraintsList, groupVendorsByStatus } from '@/lib/utils'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -20,36 +20,11 @@ function buildSystemPrompt(context: ChatContext): string {
     ?.map((d, i) => `${i + 1}. ${d.date}`)
     .join('\n') || 'None set'
 
-  // Format constraints
-  const constraints: string[] = []
-  if (event.constraints?.indoor_outdoor && event.constraints.indoor_outdoor !== 'either') {
-    constraints.push(`Indoor/Outdoor: ${event.constraints.indoor_outdoor}`)
-  }
-  if (event.constraints?.venue_types?.length) {
-    constraints.push(`Venue types: ${event.constraints.venue_types.join(', ')}`)
-  }
-  if (event.constraints?.neighborhood) {
-    constraints.push(`Neighborhood: ${event.constraints.neighborhood}`)
-  }
-  if (event.constraints?.time_frame) {
-    constraints.push(`Time: ${event.constraints.time_frame}`)
-  }
-  if (event.constraints?.catering?.food) {
-    constraints.push('Needs food catering')
-  }
-  if (event.constraints?.catering?.drinks) {
-    constraints.push('Needs drinks/bar service')
-  }
+  // Format constraints using shared utility
+  const constraints = buildConstraintsList(event.constraints || {})
 
-  // Format vendor summary
-  const vendorsByStatus: Record<string, string[]> = {}
-  vendors.forEach((v) => {
-    const status = v.vendor_threads?.status || 'NOT_CONTACTED'
-    if (!vendorsByStatus[status]) {
-      vendorsByStatus[status] = []
-    }
-    vendorsByStatus[status].push(v.name)
-  })
+  // Format vendor summary using shared utility
+  const vendorsByStatus = groupVendorsByStatus(vendors)
 
   const vendorSummary = Object.entries(vendorsByStatus)
     .map(([status, names]) => `- ${status}: ${names.join(', ')}`)

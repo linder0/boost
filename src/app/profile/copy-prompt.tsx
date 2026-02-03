@@ -34,7 +34,7 @@ export function CopyPrompt() {
         </pre>
         <button
           onClick={handleCopy}
-          className="absolute top-3 right-3 p-1.5 rounded-md hover:bg-muted-foreground/10 text-muted-foreground hover:text-foreground transition-colors"
+          className="absolute top-3 right-3 p-1.5 rounded-md hover:bg-muted-foreground/10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           title="Copy to clipboard"
         >
           {copied ? (

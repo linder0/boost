@@ -174,3 +174,74 @@ export function SignOutIcon({ className }: IconProps) {
     </svg>
   )
 }
+
+// User icon
+export function UserIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={cn('h-4 w-4', className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  )
+}
+
+// Sparkles/AI icon
+export function SparklesIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={cn('h-4 w-4', className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+      <path d="M5 3v4" />
+      <path d="M19 17v4" />
+      <path d="M3 5h4" />
+      <path d="M17 19h4" />
+    </svg>
+  )
+}
+
+// Send/Arrow right icon
+export function SendIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={cn('h-4 w-4', className)}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  )
+}
+
+// Stop/Square icon
+export function StopIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={cn('h-4 w-4', className)}
+      fill="currentColor"
+      stroke="none"
+      viewBox="0 0 24 24"
+    >
+      <rect x="6" y="6" width="12" height="12" rx="2" />
+    </svg>
+  )
+}

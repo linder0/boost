@@ -133,4 +133,26 @@
   body {
     @apply bg-background text-foreground;
   }
+  
+  /* Ensure all interactive elements show pointer cursor */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a[href],
+  [role="link"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="radio"]:not([aria-disabled="true"]),
+  [role="switch"]:not([aria-disabled="true"]),
+  [role="slider"]:not([aria-disabled="true"]) [data-slot="slider-thumb"],
+  [type="button"]:not(:disabled),
+  [type="submit"]:not(:disabled),
+  [type="reset"]:not(:disabled),
+  label[for],
+  summary {
+    cursor: pointer;
+  }
 }

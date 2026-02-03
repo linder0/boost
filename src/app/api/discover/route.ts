@@ -2,7 +2,15 @@ import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { searchVenues } from '@/lib/discovery/google-places'
 import { findEmail } from '@/lib/discovery/hunter'
-import { DiscoveredVenue } from '@/lib/discovery'
+import { 
+  DiscoveredVenue, 
+  estimatePriceRange, 
+  extractNeighborhood, 
+  generatePlaceholderEmail,
+  DEFAULT_VENUE_TYPES,
+  DEFAULT_VENDOR_TYPES,
+} from '@/lib/discovery'
+import { getSearchTypesForCategory, type EntityCategory } from '@/lib/entities'
 
 // Helper to send SSE events
 function sendEvent(
@@ -14,44 +22,10 @@ function sendEvent(
   controller.enqueue(new TextEncoder().encode(`data: ${event}\n\n`))
 }
 
-// Estimate price range from Google's price level
-function estimatePriceRange(priceLevel?: number): { min: number; max: number } {
-  switch (priceLevel) {
-    case 0:
-    case 1:
-      return { min: 30, max: 60 }
-    case 2:
-      return { min: 60, max: 100 }
-    case 3:
-      return { min: 100, max: 175 }
-    case 4:
-      return { min: 150, max: 250 }
-    default:
-      return { min: 75, max: 150 }
-  }
-}
-
-// Extract neighborhood from address
-function extractNeighborhood(address: string): string | undefined {
-  const parts = address.split(',').map((p) => p.trim())
-  if (parts.length >= 3) {
-    return parts[1]
-  }
-  return undefined
-}
-
-// Generate placeholder email
-function generatePlaceholderEmail(venueName: string): string {
-  const slug = venueName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-    .slice(0, 20)
-  return `events@${slug}.com`
-}
-
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const eventId = searchParams.get('eventId')
+  const categoryFilter = searchParams.get('category') as EntityCategory | null
 
   if (!eventId) {
     return new Response('Missing eventId', { status: 400 })
@@ -82,10 +56,26 @@ export async function GET(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // Get venue types from event, add default vendor types
-        const venueTypes = event.constraints?.venue_types || ['restaurant', 'bar', 'rooftop']
-        const vendorTypes = event.constraints?.vendor_types || ['caterer', 'photographer']
-        const allSearchTypes = [...venueTypes, ...vendorTypes]
+        // Determine search types based on category filter
+        let searchTypes: string[]
+        let searchLabel: string
+
+        if (categoryFilter) {
+          // Filter to specific category only
+          searchTypes = getSearchTypesForCategory(categoryFilter)
+          searchLabel = categoryFilter === 'Venue' ? 'venues' : `${categoryFilter}s`.toLowerCase()
+          
+          if (searchTypes.length === 0) {
+            // Fallback to category name as search type if no config exists
+            searchTypes = [categoryFilter.toLowerCase()]
+          }
+        } else {
+          // Get all venue and vendor types from event or defaults
+          const venueTypes = event.constraints?.venue_types || DEFAULT_VENUE_TYPES
+          const vendorTypes = event.constraints?.vendor_types || DEFAULT_VENDOR_TYPES
+          searchTypes = [...venueTypes, ...vendorTypes]
+          searchLabel = 'venues and vendors'
+        }
 
         // Step 1: Log start
         sendEvent(controller, 'log', {
@@ -93,17 +83,13 @@ export async function GET(request: NextRequest) {
         })
         await sleep(300)
 
-        // Step 2: Search Google Places for venues
+        // Step 2: Search Google Places
         sendEvent(controller, 'log', {
-          message: `Searching for venues: ${venueTypes.join(', ')}...`,
+          message: `Searching for ${searchLabel}: ${searchTypes.join(', ')}...`,
         })
         await sleep(200)
 
-        sendEvent(controller, 'log', {
-          message: `Searching for vendors: ${vendorTypes.join(', ')}...`,
-        })
-
-        const googleVenues = await searchVenues(event.city, allSearchTypes, 25)
+        const googleVenues = await searchVenues(event.city, searchTypes, 25)
 
         if (googleVenues.length === 0) {
           sendEvent(controller, 'log', {
@@ -115,14 +101,20 @@ export async function GET(request: NextRequest) {
           return
         }
 
-        // Count venues vs vendors
-        const venueCount = googleVenues.filter((v) => v.category === 'Venue').length
-        const vendorCount = googleVenues.filter((v) => v.category !== 'Venue').length
-
-        sendEvent(controller, 'log', {
-          message: `Found ${venueCount} venues and ${vendorCount} vendors`,
-          level: 'success',
-        })
+        // Count results by type
+        if (categoryFilter) {
+          sendEvent(controller, 'log', {
+            message: `Found ${googleVenues.length} ${searchLabel}`,
+            level: 'success',
+          })
+        } else {
+          const venueCount = googleVenues.filter((v) => v.category === 'Venue').length
+          const vendorCount = googleVenues.filter((v) => v.category !== 'Venue').length
+          sendEvent(controller, 'log', {
+            message: `Found ${venueCount} venues and ${vendorCount} vendors`,
+            level: 'success',
+          })
+        }
         await sleep(200)
 
         // Step 3: Stream results as they're discovered
@@ -208,13 +200,19 @@ export async function GET(request: NextRequest) {
         }
 
         // Step 5: Complete
-        const finalVenueCount = discoveredVenues.filter((v) => v.category === 'Venue').length
-        const finalVendorCount = discoveredVenues.filter((v) => v.category !== 'Venue').length
-        
-        sendEvent(controller, 'log', {
-          message: `Discovery complete! Found ${finalVenueCount} venues, ${finalVendorCount} vendors, ${emailsFound} verified emails`,
-          level: 'success',
-        })
+        if (categoryFilter) {
+          sendEvent(controller, 'log', {
+            message: `Discovery complete! Found ${discoveredVenues.length} ${searchLabel}, ${emailsFound} verified emails`,
+            level: 'success',
+          })
+        } else {
+          const finalVenueCount = discoveredVenues.filter((v) => v.category === 'Venue').length
+          const finalVendorCount = discoveredVenues.filter((v) => v.category !== 'Venue').length
+          sendEvent(controller, 'log', {
+            message: `Discovery complete! Found ${finalVenueCount} venues, ${finalVendorCount} vendors, ${emailsFound} verified emails`,
+            level: 'success',
+          })
+        }
 
         sendEvent(controller, 'complete', {
           count: discoveredVenues.length,

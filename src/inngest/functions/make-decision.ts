@@ -2,7 +2,13 @@ import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
 import { evaluateVendor } from '@/lib/rules/decision-engine'
 import { sendEmail } from '@/lib/gmail/operations'
-import { normalizeJoinResult } from '@/lib/utils'
+import {
+  extractThreadVendorEvent,
+  appendAutomationHistory,
+  storeMessage,
+  logAutomation,
+  updateThreadStatus
+} from '../utils'
 
 export const makeDecision = inngest.createFunction(
   {
@@ -44,14 +50,11 @@ export const makeDecision = inngest.createFunction(
 
     // Run decision engine
     const decision = await step.run('evaluate-vendor', async () => {
-      const thread = normalizeJoinResult(data.messages.vendor_threads)!
-      const vendor = normalizeJoinResult(thread.vendors)!
-      const event = normalizeJoinResult(vendor.events)!
-
+      const { event } = extractThreadVendorEvent(data)
       return evaluateVendor(data.raw_data, event)
     })
 
-    // Store decision
+    // Store decision with suggested actions
     const decisionId = await step.run('store-decision', async () => {
       const supabase = await createClient()
 
@@ -62,6 +65,7 @@ export const makeDecision = inngest.createFunction(
           outcome: decision.outcome,
           reason: decision.reason,
           proposed_next_action: decision.proposedNextAction,
+          suggested_actions: decision.suggestedActions,
         })
         .select()
         .single()
@@ -73,9 +77,10 @@ export const makeDecision = inngest.createFunction(
       return storedDecision.id
     })
 
-    // Update thread with decision
+    // Update thread with decision and escalation context
     await step.run('update-thread-status', async () => {
       const supabase = await createClient()
+      const { thread } = extractThreadVendorEvent(data)
 
       const newStatus = decision.shouldEscalate
         ? 'ESCALATION'
@@ -85,26 +90,33 @@ export const makeDecision = inngest.createFunction(
         ? 'REJECTED'
         : 'WAITING'
 
-      await supabase
-        .from('vendor_threads')
-        .update({
-          status: newStatus,
-          decision: decision.outcome,
+      const automationHistory = appendAutomationHistory(
+        thread.automation_history,
+        'DECISION',
+        {
+          outcome: decision.outcome,
           reason: decision.reason,
-          escalation_reason: decision.shouldEscalate ? decision.reason : null,
-          next_action: decision.shouldEscalate ? 'NEEDS_YOU' : 'AUTO',
-        })
-        .eq('id', threadId)
+          should_escalate: decision.shouldEscalate,
+        }
+      )
+
+      await updateThreadStatus(supabase, threadId, {
+        status: newStatus,
+        decision: decision.outcome,
+        reason: decision.reason,
+        escalation_reason: decision.shouldEscalate ? decision.reason : null,
+        escalation_category: decision.escalationCategory,
+        next_action: decision.shouldEscalate ? 'NEEDS_YOU' : 'AUTO',
+        automation_history: automationHistory,
+      })
     })
 
     // Log the decision
     await step.run('log-decision', async () => {
       const supabase = await createClient()
+      const { vendor } = extractThreadVendorEvent(data)
 
-      const thread = normalizeJoinResult(data.messages.vendor_threads)!
-      const vendor = normalizeJoinResult(thread.vendors)!
-
-      await supabase.from('automation_logs').insert({
+      await logAutomation(supabase, {
         event_id: vendor.event_id,
         vendor_id: vendor.id,
         event_type: 'DECISION',
@@ -120,9 +132,7 @@ export const makeDecision = inngest.createFunction(
     // Send auto-response if applicable
     if (decision.shouldAutoRespond && decision.proposedNextAction) {
       await step.run('send-auto-response', async () => {
-        const thread = normalizeJoinResult(data.messages.vendor_threads)!
-        const vendor = normalizeJoinResult(thread.vendors)!
-        const eventData = normalizeJoinResult(vendor.events)!
+        const { thread, vendor, event: eventData } = extractThreadVendorEvent(data)
         const supabase = await createClient()
 
         // Ensure we have a message body
@@ -139,7 +149,7 @@ export const makeDecision = inngest.createFunction(
         })
 
         // Store message
-        await supabase.from('messages').insert({
+        await storeMessage(supabase, {
           thread_id: threadId,
           sender: 'SYSTEM',
           body: decision.proposedNextAction,
@@ -148,18 +158,13 @@ export const makeDecision = inngest.createFunction(
         })
 
         // Update last touch
-        await supabase
-          .from('vendor_threads')
-          .update({
-            last_touch: new Date().toISOString(),
-          })
-          .eq('id', threadId)
+        await updateThreadStatus(supabase, threadId, {})
       })
     }
 
     // Trigger escalation notification if needed
     if (decision.shouldEscalate) {
-      const thread = normalizeJoinResult(data.messages.vendor_threads)!
+      const { thread } = extractThreadVendorEvent(data)
       await step.sendEvent('escalation-triggered', {
         name: 'vendor.escalation',
         data: {

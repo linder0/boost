@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { sendEmail } from '@/lib/gmail/operations'
 import { generateFollowUp1, generateBreakupEmail, getFollowUpSubject } from '@/lib/templates/followups'
 import { normalizeJoinResult } from '@/lib/utils'
+import { storeMessage, logAutomation, updateThreadStatus } from '../utils'
 
 export const sendFollowUp = inngest.createFunction(
   {
@@ -71,7 +72,7 @@ export const sendFollowUp = inngest.createFunction(
     await step.run('store-followup-message', async () => {
       const supabase = await createClient()
 
-      await supabase.from('messages').insert({
+      await storeMessage(supabase, {
         thread_id: threadId,
         sender: 'SYSTEM',
         body: emailBody,
@@ -80,21 +81,17 @@ export const sendFollowUp = inngest.createFunction(
       })
 
       // Update thread
-      await supabase
-        .from('vendor_threads')
-        .update({
-          last_touch: new Date().toISOString(),
-          follow_up_count: threadStatus.follow_up_count + 1,
-          status: isBreakup ? 'REJECTED' : 'WAITING',
-        })
-        .eq('id', threadId)
+      await updateThreadStatus(supabase, threadId, {
+        follow_up_count: threadStatus.follow_up_count + 1,
+        status: isBreakup ? 'REJECTED' : 'WAITING',
+      })
     })
 
     // Log the follow-up
     await step.run('log-followup', async () => {
       const supabase = await createClient()
 
-      await supabase.from('automation_logs').insert({
+      await logAutomation(supabase, {
         event_id: eventData.id,
         vendor_id: vendorId,
         event_type: 'FOLLOW_UP',

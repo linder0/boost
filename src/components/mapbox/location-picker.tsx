@@ -153,7 +153,7 @@ export function LocationPicker({
           <button
             type="button"
             onClick={handleClear}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="text-sm text-muted-foreground hover:text-foreground cursor-pointer"
           >
             Clear location
           </button>

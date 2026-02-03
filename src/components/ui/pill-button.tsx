@@ -15,7 +15,7 @@ export const PillButton = forwardRef<HTMLButtonElement, PillButtonProps>(
         ref={ref}
         type="button"
         className={cn(
-          'inline-flex items-center gap-1 rounded-full font-medium transition-colors',
+          'inline-flex items-center gap-1 rounded-full font-medium transition-colors cursor-pointer',
           size === 'sm' && 'px-2.5 py-1 text-xs',
           size === 'md' && 'px-3 py-1.5 text-sm',
           selected

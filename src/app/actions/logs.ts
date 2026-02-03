@@ -2,16 +2,13 @@
 
 import { getAuthenticatedClient, handleSupabaseError } from '@/lib/supabase/server'
 import { AutomationLog, LogEventType } from '@/types/database'
-import { isValidUUID } from '@/lib/utils'
+import { validateUUID } from '@/lib/utils'
 
 export async function getAutomationLogs(
   eventId: string,
   filterType?: LogEventType
 ) {
-  if (!isValidUUID(eventId)) {
-    console.warn('Invalid event ID format:', eventId)
-    return [] as (AutomationLog & { vendors: { name: string } | null })[]
-  }
+  validateUUID(eventId, 'event ID')
 
   const { supabase } = await getAuthenticatedClient()
 

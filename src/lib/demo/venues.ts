@@ -574,21 +574,56 @@ export function findMatchingVenues(filter: VenueFilter): DemoVenue[] {
   })
 }
 
-// Convert demo venue to vendor format for DB insertion
-export function demoVenueToVendor(venue: DemoVenue): {
+// Type for discovered venue (from Google Places + Hunter)
+interface DiscoveredVenueFields {
+  discoverySource?: string
+  website?: string
+  rating?: number
+  emailConfidence?: number
+  googlePlaceId?: string
+  phone?: string
+}
+
+// Convert demo venue or discovered venue to vendor format for DB insertion
+export function demoVenueToVendor(venue: DemoVenue & Partial<DiscoveredVenueFields>): {
   name: string
   category: string
   contact_email: string
   address?: string
   latitude?: number
   longitude?: number
+  website?: string
+  rating?: number
+  email_confidence?: number
+  google_place_id?: string
+  phone?: string
+  discovery_source?: string
 } {
-  return {
+  const base = {
     name: venue.name,
     category: venue.category,
     contact_email: venue.email,
     address: venue.neighborhood ? `${venue.neighborhood}, ${venue.city}` : venue.city,
     latitude: venue.latitude,
     longitude: venue.longitude,
+  }
+
+  // Add discovery metadata if available (from DiscoveredVenue)
+  if ('discoverySource' in venue && venue.discoverySource) {
+    return {
+      ...base,
+      website: venue.website,
+      rating: venue.rating,
+      email_confidence: venue.emailConfidence,
+      google_place_id: venue.googlePlaceId,
+      phone: venue.phone,
+      discovery_source: venue.discoverySource,
+    }
+  }
+
+  // Default to demo source for demo venues
+  return {
+    ...base,
+    discovery_source: 'demo',
   }
 }

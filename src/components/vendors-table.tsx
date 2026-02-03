@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -14,17 +14,31 @@ import {
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Badge } from './ui/badge'
+import { Progress } from './ui/progress'
 import { VendorWithThread, VendorStatus, DecisionOutcome, ConfidenceLevel } from '@/types/database'
 import { StatusBadge, DecisionBadge, ConfidenceBadge } from './status-badge'
 import { EmptyState } from './empty-state'
+import { VendorNameDisplay, VendorEmailDisplay } from './vendor-display'
 import { updateVendor, regenerateVendorMessage } from '@/app/actions/vendors'
-import { startOutreachByCategory } from '@/app/actions/threads'
 import { normalizeJoinResult } from '@/lib/utils'
+// Note: startOutreachByCategory is not used - outreach is simulated for demo purposes
+import { sortCategories, groupByCategory } from '@/lib/entities'
+import { Mail, CheckCircle2, Loader2 } from 'lucide-react'
 
 interface VendorsTableProps {
   vendors: VendorWithThread[]
   eventId: string
   onVendorClick: (vendor: VendorWithThread) => void
+}
+
+// Outreach simulation state
+interface OutreachSimulation {
+  isActive: boolean
+  category: string | null
+  currentVendorId: string | null
+  processedVendorIds: Set<string>
+  progress: number
+  totalCount: number
 }
 
 // Helper to check if vendor is confirmed (VIABLE or DONE)
@@ -39,33 +53,78 @@ function isRejected(vendor: VendorWithThread): boolean {
   return thread?.status === 'REJECTED'
 }
 
-// Group vendors by category
-function groupByCategory(vendors: VendorWithThread[]): Record<string, VendorWithThread[]> {
-  return vendors.reduce((acc, vendor) => {
-    const category = vendor.category || 'Other'
-    if (!acc[category]) {
-      acc[category] = []
-    }
-    acc[category].push(vendor)
-    return acc
-  }, {} as Record<string, VendorWithThread[]>)
-}
-
-// Category display order (Venue first, then alphabetical)
-function sortCategories(categories: string[]): string[] {
-  return categories.sort((a, b) => {
-    if (a === 'Venue') return -1
-    if (b === 'Venue') return 1
-    return a.localeCompare(b)
-  })
-}
-
 export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTableProps) {
   const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
+
+  // Outreach simulation state
+  const [simulation, setSimulation] = useState<OutreachSimulation>({
+    isActive: false,
+    category: null,
+    currentVendorId: null,
+    processedVendorIds: new Set(),
+    progress: 0,
+    totalCount: 0,
+  })
+
+  // Simulate outreach for a category (UI only - no actual emails sent)
+  const simulateOutreach = useCallback(async (category: string, vendorsToProcess: VendorWithThread[]) => {
+    const notContactedVendors = vendorsToProcess.filter(v => {
+      const thread = normalizeJoinResult(v.vendor_threads)
+      return thread?.status === 'NOT_CONTACTED'
+    })
+
+    if (notContactedVendors.length === 0) return
+
+    // Initialize simulation
+    setSimulation({
+      isActive: true,
+      category,
+      currentVendorId: null,
+      processedVendorIds: new Set(),
+      progress: 0,
+      totalCount: notContactedVendors.length,
+    })
+
+    // Process each vendor with a delay for visual effect
+    for (let i = 0; i < notContactedVendors.length; i++) {
+      const vendor = notContactedVendors[i]
+
+      // Set current vendor (sending state)
+      setSimulation(prev => ({
+        ...prev,
+        currentVendorId: vendor.id,
+        progress: Math.round(((i) / notContactedVendors.length) * 100),
+      }))
+
+      // Wait a bit to show "sending" state
+      await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400))
+
+      // Mark as processed
+      setSimulation(prev => ({
+        ...prev,
+        processedVendorIds: new Set([...prev.processedVendorIds, vendor.id]),
+        progress: Math.round(((i + 1) / notContactedVendors.length) * 100),
+      }))
+
+      // Small delay before next
+      await new Promise(resolve => setTimeout(resolve, 200))
+    }
+
+    // Complete simulation
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setSimulation({
+      isActive: false,
+      category: null,
+      currentVendorId: null,
+      processedVendorIds: new Set(),
+      progress: 0,
+      totalCount: 0,
+    })
+  }, [])
 
   // Separate vendors into confirmed, pipeline, and rejected
   const { confirmed, pipeline, rejected } = useMemo(() => {
@@ -116,11 +175,18 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
     const thread = normalizeJoinResult(vendor.vendor_threads)
     const isEditing = editingId === vendor.id
 
+    // Simulation state for this vendor
+    const isSending = simulation.currentVendorId === vendor.id
+    const wasSent = simulation.processedVendorIds.has(vendor.id)
+    const isInActiveSimulation = simulation.isActive && simulation.category === vendor.category
+
     return (
       <TableRow
         key={vendor.id}
-        className="cursor-pointer hover:bg-muted"
-        onClick={() => !isEditing && onVendorClick(vendor)}
+        className={`cursor-pointer hover:bg-muted transition-all duration-300 ${
+          isSending ? 'bg-blue-50 dark:bg-blue-950/30' : ''
+        } ${wasSent ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
+        onClick={() => !isEditing && !simulation.isActive && onVendorClick(vendor)}
       >
         <TableCell>
           {isEditing ? (
@@ -132,7 +198,13 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <span className="font-medium">{vendor.name}</span>
+            <VendorNameDisplay
+              name={vendor.name}
+              rating={vendor.rating}
+              website={vendor.website}
+              discoverySource={vendor.discovery_source}
+              showDiscoveryBadge
+            />
           )}
         </TableCell>
         <TableCell>
@@ -145,11 +217,26 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            vendor.contact_email
+            <VendorEmailDisplay
+              email={vendor.contact_email}
+              emailConfidence={vendor.email_confidence}
+            />
           )}
         </TableCell>
         <TableCell>
-          {thread && <StatusBadge status={thread.status as VendorStatus} />}
+          {isSending ? (
+            <Badge className="bg-blue-500 text-white animate-pulse">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              Sending...
+            </Badge>
+          ) : wasSent ? (
+            <Badge className="bg-green-500 text-white">
+              <CheckCircle2 className="w-3 h-3 mr-1" />
+              Sent
+            </Badge>
+          ) : thread ? (
+            <StatusBadge status={thread.status as VendorStatus} />
+          ) : null}
         </TableCell>
         <TableCell>
           {thread?.decision && (
@@ -168,19 +255,15 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
   }
 
   const handleCategoryOutreach = async (category: string) => {
-    setLoading(true)
-    try {
-      await startOutreachByCategory(eventId, category)
-    } catch (error) {
-      console.error('Failed to start outreach:', error)
-    } finally {
-      setLoading(false)
-    }
+    if (simulation.isActive) return
+
+    const categoryVendors = pipelineByCategory[category] || []
+    await simulateOutreach(category, categoryVendors)
   }
 
   const renderCategorySection = (categoryGroups: Record<string, VendorWithThread[]>, showActions: boolean = true) => {
     const categories = sortCategories(Object.keys(categoryGroups))
-    
+
     return categories.map(category => {
       const categoryVendors = categoryGroups[category]
       const notContactedCount = categoryVendors.filter(v => {
@@ -188,16 +271,27 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
         return thread?.status === 'NOT_CONTACTED'
       }).length
 
+      const isSimulatingThisCategory = simulation.isActive && simulation.category === category
+
       return (
         <div key={category} className="mb-6 last:mb-0">
           <div className="mb-2 flex items-center justify-between">
-            <h4 className="text-sm font-medium text-muted-foreground">{category}s ({categoryVendors.length})</h4>
+            <div className="flex items-center gap-3">
+              <h4 className="text-sm font-medium text-muted-foreground">{category}s ({categoryVendors.length})</h4>
+              {isSimulatingThisCategory && (
+                <div className="flex items-center gap-2 text-sm text-blue-600">
+                  <Mail className="w-4 h-4 animate-pulse" />
+                  <span>Sending {simulation.processedVendorIds.size} of {simulation.totalCount}...</span>
+                </div>
+              )}
+            </div>
             {showActions && (
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => router.push(`/events/${eventId}/vendors/discover?category=${encodeURIComponent(category)}`)}
+                  disabled={simulation.isActive}
                 >
                   Discover {category}s
                 </Button>
@@ -205,14 +299,29 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
                   <Button
                     size="sm"
                     onClick={() => handleCategoryOutreach(category)}
-                    disabled={loading}
+                    disabled={simulation.isActive}
                   >
-                    {loading ? 'Starting...' : `Start Outreach (${notContactedCount})`}
+                    {isSimulatingThisCategory ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      `Start Outreach (${notContactedCount})`
+                    )}
                   </Button>
                 )}
               </div>
             )}
           </div>
+
+          {/* Progress bar during simulation */}
+          {isSimulatingThisCategory && (
+            <div className="mb-3">
+              <Progress value={simulation.progress} className="h-2" />
+            </div>
+          )}
+
           <div className="rounded-md border">
             <Table>
               <TableHeader>

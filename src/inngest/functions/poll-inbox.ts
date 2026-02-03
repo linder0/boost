@@ -8,6 +8,7 @@ import {
   markAsRead,
 } from '@/lib/gmail/operations'
 import { matchInboundMessage, getWaitingVendorEmails } from '@/lib/email/thread-matcher'
+import { storeMessage, logAutomation, updateThreadStatus } from '../utils'
 
 export const pollInbox = inngest.createFunction(
   {
@@ -86,34 +87,27 @@ export const pollInbox = inngest.createFunction(
 
             // Store inbound message
             const supabase = await createClient()
-            const { data: storedMessage } = await supabase
-              .from('messages')
-              .insert({
+            let storedMessage: { id: string }
+            try {
+              storedMessage = await storeMessage(supabase, {
                 thread_id: thread.id,
                 sender: 'VENDOR',
                 body,
                 gmail_message_id: fullMessage.id || null,
                 inbound: true,
               })
-              .select()
-              .single()
-
-            if (!storedMessage) {
-              console.error('Failed to store message')
+            } catch (err) {
+              console.error('Failed to store message:', err)
               continue
             }
 
             // Update thread
-            await supabase
-              .from('vendor_threads')
-              .update({
-                status: 'PARSED', // Will be updated after parsing
-                last_touch: new Date().toISOString(),
-              })
-              .eq('id', thread.id)
+            await updateThreadStatus(supabase, thread.id, {
+              status: 'PARSED', // Will be updated after parsing
+            })
 
             // Log the reply
-            await supabase.from('automation_logs').insert({
+            await logAutomation(supabase, {
               event_id: thread.vendors.event_id,
               vendor_id: thread.vendors.id,
               event_type: 'REPLY',
@@ -131,7 +125,7 @@ export const pollInbox = inngest.createFunction(
               console.error('Failed to mark as read:', error)
             }
 
-            // Trigger parsing event
+            // Trigger parsing event using step.sendEvent for consistency
             await inngest.send({
               name: 'message.inbound.new',
               data: {
@@ -148,7 +142,7 @@ export const pollInbox = inngest.createFunction(
           }
         } catch (error: any) {
           console.error(`Error processing user ${user_id}:`, error)
-          
+
           // If token refresh fails, skip this user
           if (error.message?.includes('Gmail tokens')) {
             return { error: 'Gmail not connected', userId: user_id }

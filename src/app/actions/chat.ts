@@ -1,17 +1,15 @@
 'use server'
 
-import { 
-  getAuthenticatedClient, 
+import {
+  getAuthenticatedClient,
   handleSupabaseError,
-  ensureFound 
+  ensureFound
 } from '@/lib/supabase/server'
 import { ChatMessage, ChatRole } from '@/types/database'
-import { isValidUUID } from '@/lib/utils'
+import { validateUUID } from '@/lib/utils'
 
 export async function getChatHistory(eventId: string): Promise<ChatMessage[]> {
-  if (!isValidUUID(eventId)) {
-    throw new Error('Invalid event ID')
-  }
+  validateUUID(eventId, 'event ID')
 
   const { supabase } = await getAuthenticatedClient()
 
@@ -30,9 +28,7 @@ export async function saveChatMessage(
   role: ChatRole,
   content: string
 ): Promise<ChatMessage> {
-  if (!isValidUUID(eventId)) {
-    throw new Error('Invalid event ID')
-  }
+  validateUUID(eventId, 'event ID')
 
   const { supabase } = await getAuthenticatedClient()
 
@@ -59,9 +55,7 @@ export async function saveChatMessage(
 }
 
 export async function clearChatHistory(eventId: string): Promise<void> {
-  if (!isValidUUID(eventId)) {
-    throw new Error('Invalid event ID')
-  }
+  validateUUID(eventId, 'event ID')
 
   const { supabase } = await getAuthenticatedClient()
 

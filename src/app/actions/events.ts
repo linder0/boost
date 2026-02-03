@@ -1,13 +1,13 @@
 'use server'
 
-import { 
+import {
   getAuthenticatedClient,
   handleSupabaseError,
   ensureFound
 } from '@/lib/supabase/server'
 import { Event } from '@/types/database'
 import { revalidatePath } from 'next/cache'
-import { isValidUUID } from '@/lib/utils'
+import { validateUUID } from '@/lib/utils'
 
 export async function createEmptyEvent() {
   const { supabase, user } = await getAuthenticatedClient()
@@ -82,9 +82,7 @@ export async function createEvent(data: {
 }
 
 export async function getEvent(id: string) {
-  if (!isValidUUID(id)) {
-    throw new Error('Invalid event ID')
-  }
+  validateUUID(id, 'event ID')
 
   const { supabase } = await getAuthenticatedClient()
 

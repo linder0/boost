@@ -6,6 +6,7 @@ import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
 import { ChatMessage } from '@/types/database'
 import { cn } from '@/lib/utils'
+import { UserIcon, SparklesIcon, SendIcon, StopIcon } from './ui/icons'
 
 interface ChatInterfaceProps {
   eventId: string
@@ -42,7 +43,7 @@ export function ChatInterface({ eventId, initialMessages }: ChatInterfaceProps) 
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    
+
     const trimmedInput = input.trim()
     if (!trimmedInput || isLoading) return
 
@@ -187,7 +188,7 @@ export function ChatInterface({ eventId, initialMessages }: ChatInterfaceProps) 
             rows={1}
             disabled={isLoading}
           />
-          <Button 
+          <Button
             type="button"
             onClick={() => handleSubmit()}
             disabled={isLoading || !input.trim()}
@@ -282,82 +283,9 @@ function SuggestionChip({
     <button
       type="button"
       onClick={onClick}
-      className="px-4 py-2 text-sm rounded-xl border bg-background hover:bg-muted transition-colors shadow-sm"
+      className="px-4 py-2 text-sm rounded-xl border bg-background hover:bg-muted transition-colors shadow-sm cursor-pointer"
     >
       {children}
     </button>
-  )
-}
-
-function UserIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  )
-}
-
-function SparklesIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-      <path d="M5 3v4" />
-      <path d="M19 17v4" />
-      <path d="M3 5h4" />
-      <path d="M17 19h4" />
-    </svg>
-  )
-}
-
-function SendIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  )
-}
-
-function StopIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      stroke="none"
-    >
-      <rect x="6" y="6" width="12" height="12" rx="2" />
-    </svg>
   )
 }

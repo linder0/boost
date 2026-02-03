@@ -21,11 +21,13 @@ import {
 } from './ui/accordion'
 import { MessageTimeline } from './message-timeline'
 import { ParsedFactsCard } from './parsed-facts-card'
+import { EscalationContextPanel } from './escalation-context-panel'
 import { LocationPicker, LocationData, MapboxMap } from './mapbox'
 import { VendorWithThread, MessageWithParsed } from '@/types/database'
-import { escalateThread } from '@/app/actions/threads'
+import { escalateThread, updateThreadStatus } from '@/app/actions/threads'
 import { updateVendorLocation, regenerateVendorMessage, updateVendorMessage } from '@/app/actions/vendors'
 import { normalizeJoinResult } from '@/lib/utils'
+import { VendorNameDisplay, VendorEmailDisplay } from './vendor-display'
 
 interface VendorDrawerProps {
   vendor: VendorWithThread | null
@@ -34,7 +36,6 @@ interface VendorDrawerProps {
 }
 
 export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
-  const [escalationMessage, setEscalationMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [editingLocation, setEditingLocation] = useState(false)
   const [locationSaving, setLocationSaving] = useState(false)
@@ -47,9 +48,9 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
   if (!vendor) return null
 
   const thread = normalizeJoinResult(vendor.vendor_threads)
-  
+
   // Initialize vendor location from vendor data
-  const currentLocation: LocationData | null = 
+  const currentLocation: LocationData | null =
     vendor.latitude && vendor.longitude
       ? { address: vendor.address || '', lat: vendor.latitude, lng: vendor.longitude }
       : null
@@ -64,28 +65,17 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )[0]
 
-  const handleEscalate = async () => {
-    if (!thread || !escalationMessage.trim()) return
-
-    setLoading(true)
-    try {
-      await escalateThread(thread.id, escalationMessage)
-      setEscalationMessage('')
-      onClose()
-    } catch (error) {
-      console.error('Failed to escalate:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
     <Dialog open={!!vendor} onOpenChange={onClose}>
       <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden p-0 flex flex-col gap-0 focus:outline-none" showCloseButton={false}>
         {/* Sticky Header */}
         <DialogHeader className="sticky top-0 bg-background z-10 px-6 pt-6 pb-4 border-b">
           <DialogTitle className="flex items-center justify-between gap-4">
-            <span>{vendor.name}</span>
+            <VendorNameDisplay
+              name={vendor.name}
+              rating={vendor.rating}
+              website={vendor.website}
+            />
             <div className="flex items-center gap-3">
               {thread && (
                 <Badge
@@ -100,30 +90,76 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
                   {thread.status}
                 </Badge>
               )}
-              <DialogClose className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none">
+              <DialogClose className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none cursor-pointer">
                 <X className="h-5 w-5" />
                 <span className="sr-only">Close</span>
               </DialogClose>
             </div>
           </DialogTitle>
-          <DialogDescription>
-            {vendor.category} • {vendor.contact_email}
+          <DialogDescription asChild>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <span>{vendor.category}</span>
+              <span>•</span>
+              <VendorEmailDisplay
+                email={vendor.contact_email}
+                emailConfidence={vendor.email_confidence}
+              />
+              {vendor.phone && (
+                <>
+                  <span>•</span>
+                  <a href={`tel:${vendor.phone}`} className="hover:underline">
+                    {vendor.phone}
+                  </a>
+                </>
+              )}
+            </div>
           </DialogDescription>
         </DialogHeader>
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="space-y-6">
-            {/* Escalation Banner */}
-            {isEscalation && thread?.escalation_reason && (
-              <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-4">
-                <h3 className="font-semibold text-destructive">
-                  Action Required
-                </h3>
-                <p className="mt-1 text-sm text-destructive/80">
-                  {thread.escalation_reason}
-                </p>
-              </div>
+            {/* Escalation Context Panel - Enhanced Human-in-the-Loop */}
+            {isEscalation && thread && (
+              <EscalationContextPanel
+                thread={thread}
+                parsedResponse={latestParsedMessage?.parsed_responses}
+                vendorName={vendor.name}
+                onSendResponse={async (message) => {
+                  setLoading(true)
+                  try {
+                    await escalateThread(thread.id, message)
+                    onClose()
+                  } catch (error) {
+                    console.error('Failed to send response:', error)
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+                onApprove={async () => {
+                  setLoading(true)
+                  try {
+                    await updateThreadStatus(thread.id, 'VIABLE')
+                    onClose()
+                  } catch (error) {
+                    console.error('Failed to approve:', error)
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+                onReject={async () => {
+                  setLoading(true)
+                  try {
+                    await updateThreadStatus(thread.id, 'REJECTED')
+                    onClose()
+                  } catch (error) {
+                    console.error('Failed to reject:', error)
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+                loading={loading}
+              />
             )}
 
             {/* Outreach Message Section */}
@@ -166,7 +202,7 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
                   </Button>
                 </div>
               </div>
-              
+
               {editingMessage ? (
                 <div className="space-y-3">
                   <Textarea
@@ -252,7 +288,7 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
                   </Button>
                 )}
               </div>
-              
+
               {editingLocation ? (
                 <div className="space-y-3">
                   <LocationPicker
@@ -351,25 +387,7 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
               </Accordion>
             )}
 
-            {/* Escalation Prompt */}
-            {isEscalation && (
-              <div className="space-y-4 rounded-lg border border-gray-200 p-4">
-                <h3 className="font-semibold">Send Response & Resume Automation</h3>
-                <Textarea
-                  placeholder="Type your response to the vendor..."
-                  value={escalationMessage}
-                  onChange={(e) => setEscalationMessage(e.target.value)}
-                  rows={4}
-                />
-                <Button
-                  onClick={handleEscalate}
-                  disabled={loading || !escalationMessage.trim()}
-                  className="w-full"
-                >
-                  {loading ? 'Sending...' : 'Send & Resume Automation'}
-                </Button>
-              </div>
-            )}
+            {/* Note: Escalation prompt is now integrated into EscalationContextPanel above */}
           </div>
         </div>
       </DialogContent>
