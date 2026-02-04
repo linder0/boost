@@ -21,6 +21,7 @@ interface VenueDiscoveryProps {
 interface DiscoveredRestaurant {
   name: string
   email: string
+  emailConfidence?: number
   category?: string
   city?: string
   neighborhood?: string

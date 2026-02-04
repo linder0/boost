@@ -259,6 +259,7 @@ export function discoveredToVendorRow(
   restaurant: {
     name: string
     email: string
+    emailConfidence?: number
     cuisine?: string
     priceLevel?: number
     capacityMin?: number
@@ -282,6 +283,7 @@ export function discoveredToVendorRow(
     id: restaurant.email, // Use email as ID for discovery
     name: restaurant.name,
     email: restaurant.email,
+    emailConfidence: restaurant.emailConfidence,
     cuisine: restaurant.cuisine,
     priceLevel: restaurant.priceLevel,
     capacityMin: restaurant.capacityMin,
