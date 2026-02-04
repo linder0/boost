@@ -139,22 +139,6 @@ export function extractStreetAddress(address: string): string {
 }
 
 // ============================================================================
-// Email Utilities
-// ============================================================================
-
-/**
- * Generate a placeholder email for venues where we couldn't find a real one
- * Used when Hunter.io doesn't return a result
- */
-export function generatePlaceholderEmail(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-    .slice(0, 20)
-  return `events@${slug}.com`
-}
-
-// ============================================================================
 // Name Utilities
 // ============================================================================
 

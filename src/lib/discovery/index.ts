@@ -24,7 +24,6 @@ import {
   estimatePriceRange,
   extractNeighborhood,
   extractBorough,
-  generatePlaceholderEmail,
 } from './utils'
 
 // Re-exports for external use
@@ -58,7 +57,7 @@ export type DiscoverySource = 'google_places' | 'resy' | 'opentable' | 'beli' | 
 export interface DiscoveredRestaurant {
   name: string
   category: 'Restaurant'
-  email: string
+  email?: string
   city: string
   neighborhood?: string
   address?: string // Full street address
@@ -245,12 +244,12 @@ async function discoverFromGooglePlaces(
   return googleVenues.map((venue) => {
     const emailResult = venue.website ? emailResults.get(venue.website) : null
     const priceRange = estimatePriceRange(venue.priceLevel)
-    const email = emailResult?.email || generatePlaceholderEmail(venue.name)
 
     return {
       name: venue.name,
       category: 'Restaurant' as const,
-      email,
+      email: emailResult?.email,
+      emailConfidence: emailResult?.confidence,
       city,
       neighborhood: extractNeighborhood(venue.address),
       address: venue.address,
@@ -264,7 +263,6 @@ async function discoverFromGooglePlaces(
       latitude: venue.latitude,
       longitude: venue.longitude,
       googlePlaceId: venue.googlePlaceId,
-      emailConfidence: emailResult?.confidence,
       discoverySource: 'google_places' as const,
       website: venue.website,
       rating: venue.rating,
@@ -290,7 +288,7 @@ async function discoverFromResy(
     return {
       name: converted.name,
       category: 'Restaurant' as const,
-      email: converted.contactEmail || generatePlaceholderEmail(converted.name),
+      email: converted.contactEmail,
       city: converted.city,
       neighborhood: converted.neighborhood,
       borough: 'Manhattan', // Resy venues in NYC are typically Manhattan
@@ -332,7 +330,7 @@ async function discoverFromOpenTable(
     return {
       name: converted.name,
       category: 'Restaurant' as const,
-      email: converted.contactEmail || generatePlaceholderEmail(converted.name),
+      email: converted.contactEmail,
       city: converted.city,
       neighborhood: converted.neighborhood,
       address: converted.address,
@@ -374,7 +372,7 @@ async function discoverFromOpenTableClawdbot(
   return results.map((r) => ({
     name: r.name,
     category: 'Restaurant' as const,
-    email: r.contactEmail || generatePlaceholderEmail(r.name),
+    email: r.contactEmail,
     city: r.city,
     neighborhood: r.neighborhood,
     cuisine: r.cuisine,
@@ -407,7 +405,7 @@ async function discoverFromBeli(limit: number = 50): Promise<DiscoveredRestauran
   return results.map((r) => ({
     name: r.name,
     category: 'Restaurant' as const,
-    email: r.contactEmail || generatePlaceholderEmail(r.name),
+    email: r.contactEmail,
     city: r.city,
     neighborhood: r.neighborhood,
     cuisine: r.cuisine,

@@ -258,7 +258,7 @@ export function entityToVendorRow(entity: Entity): VendorRow {
 export function discoveredToVendorRow(
   restaurant: {
     name: string
-    email: string
+    email?: string
     emailConfidence?: number
     cuisine?: string
     priceLevel?: number
@@ -279,8 +279,10 @@ export function discoveredToVendorRow(
   },
   isAlreadyAdded: boolean
 ): VendorRow {
+  // Use email or composite key as ID for discovery
+  const id = restaurant.email || `${restaurant.name}-${restaurant.discoverySource || 'unknown'}`
   return {
-    id: restaurant.email, // Use email as ID for discovery
+    id,
     name: restaurant.name,
     email: restaurant.email,
     emailConfidence: restaurant.emailConfidence,

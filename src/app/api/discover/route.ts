@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
           .join(', ')
 
         const withPrivateDining = restaurants.filter((r) => r.hasPrivateDining).length
-        const withEmails = restaurants.filter((r) => r.email && !r.email.includes('@placeholder.')).length
+        const withEmails = restaurants.filter((r) => r.email).length
 
         sendEvent(controller, 'log', {
           message: `Discovery complete! ${sourceSummary}`,

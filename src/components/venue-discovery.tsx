@@ -20,7 +20,7 @@ interface VenueDiscoveryProps {
 // Extended restaurant type with discovery metadata
 interface DiscoveredRestaurant {
   name: string
-  email: string
+  email?: string
   emailConfidence?: number
   category?: string
   city?: string
@@ -51,6 +51,16 @@ interface DiscoveredRestaurant {
 let logIdCounter = 0
 function generateLogId(): string {
   return `log-${Date.now()}-${logIdCounter++}`
+}
+
+// Generate a stable ID for a discovered restaurant
+function getRestaurantId(restaurant: DiscoveredRestaurant): string {
+  // Prefer email if available, otherwise use name + source
+  if (restaurant.email) {
+    return restaurant.email
+  }
+  const normalizedName = restaurant.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return `${normalizedName}-${restaurant.discoverySource || 'unknown'}`
 }
 
 // Discovery source options
@@ -262,16 +272,14 @@ export function VenueDiscovery({
                   break
 
                 case 'venue': {
-                  // Add restaurant with deduplication by email and name
+                  // Add restaurant with deduplication by name
                   const newRestaurant = event.data as DiscoveredRestaurant
                   setRestaurants((prev) => {
-                    const emailLower = newRestaurant.email.toLowerCase()
                     const nameLower = newRestaurant.name.toLowerCase().replace(/[^a-z0-9]/g, '')
 
                     const isDuplicate = prev.some((r) => {
-                      const existingEmail = r.email.toLowerCase()
                       const existingName = r.name.toLowerCase().replace(/[^a-z0-9]/g, '')
-                      return existingEmail === emailLower || existingName === nameLower
+                      return existingName === nameLower
                     })
 
                     if (isDuplicate) return prev
@@ -291,7 +299,7 @@ export function VenueDiscovery({
                 case 'complete':
                   setHasDiscovered(true)
                   setRestaurants((currentRestaurants) => {
-                    const newSelectedIds = new Set(currentRestaurants.map((r) => r.email))
+                    const newSelectedIds = new Set(currentRestaurants.map(getRestaurantId))
                     setSelectedIds(newSelectedIds)
                     // Save to cache with current state
                     setLogs((currentLogs) => {
@@ -346,7 +354,7 @@ export function VenueDiscovery({
     if (selectedIds.size === restaurants.length) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(restaurants.map((r) => r.email)))
+      setSelectedIds(new Set(restaurants.map(getRestaurantId)))
     }
   }
 
@@ -373,7 +381,7 @@ export function VenueDiscovery({
 
     try {
       const restaurantsToCreate: DiscoveredEntityInput[] = restaurants
-        .filter((r) => selectedIds.has(r.email))
+        .filter((r) => selectedIds.has(getRestaurantId(r)))
         .map(discoveredRestaurantToEntity)
 
       await createEntitiesFromDiscovery(restaurantsToCreate)

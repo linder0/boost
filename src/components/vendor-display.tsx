@@ -78,6 +78,11 @@ export function VendorEmailDisplay({
   emailConfidence,
   className,
 }: VendorEmailDisplayProps) {
+  // Show dash when no email is available
+  if (!email) {
+    return <span className="text-muted-foreground text-sm">-</span>
+  }
+
   return (
     <div className={`flex items-center gap-1.5 ${className || ''}`}>
       <span>{email}</span>
