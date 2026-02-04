@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { PillButton } from '@/components/ui/pill-button'
 import { VendorsTable, VendorRow, discoveredToVendorRow } from './vendors-table'
@@ -419,67 +418,65 @@ export function VenueDiscovery({
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="pt-4 space-y-4">
-          {/* Discovery Sources */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Search Sources</label>
-            <div className="flex flex-wrap gap-2">
-              {DISCOVERY_SOURCES.map((source) => (
-                <PillButton
-                  key={source.id}
-                  selected={selectedSources.has(source.id)}
-                  onClick={() => toggleSource(source.id)}
-                  disabled={!source.enabled || isDiscovering}
-                >
-                  {source.label}
-                  {!source.enabled && <span className="ml-1 text-xs opacity-50">(soon)</span>}
-                </PillButton>
-              ))}
-            </div>
-          </div>
-
-          {/* Cuisine Filter */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Cuisine (optional)</label>
-            <div className="flex flex-wrap gap-2">
+      <div className="space-y-6">
+        {/* Discovery Sources */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Search Sources</label>
+          <div className="flex flex-wrap gap-2">
+            {DISCOVERY_SOURCES.map((source) => (
               <PillButton
-                selected={selectedCuisine === null}
-                onClick={() => setSelectedCuisine(null)}
+                key={source.id}
+                selected={selectedSources.has(source.id)}
+                onClick={() => toggleSource(source.id)}
+                disabled={!source.enabled || isDiscovering}
+              >
+                {source.label}
+                {!source.enabled && <span className="ml-1 text-xs opacity-50">(soon)</span>}
+              </PillButton>
+            ))}
+          </div>
+        </div>
+
+        {/* Cuisine Filter */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Cuisine (optional)</label>
+          <div className="flex flex-wrap gap-2">
+            <PillButton
+              selected={selectedCuisine === null}
+              onClick={() => setSelectedCuisine(null)}
+              disabled={isDiscovering}
+            >
+              All
+            </PillButton>
+            {CUISINE_TYPES.slice(0, 8).map((cuisine) => (
+              <PillButton
+                key={cuisine}
+                selected={selectedCuisine === cuisine}
+                onClick={() => setSelectedCuisine(cuisine)}
                 disabled={isDiscovering}
               >
-                All
+                {cuisine}
               </PillButton>
-              {CUISINE_TYPES.slice(0, 8).map((cuisine) => (
-                <PillButton
-                  key={cuisine}
-                  selected={selectedCuisine === cuisine}
-                  onClick={() => setSelectedCuisine(cuisine)}
-                  disabled={isDiscovering}
-                >
-                  {cuisine}
-                </PillButton>
-              ))}
-            </div>
+            ))}
           </div>
+        </div>
 
-          {/* Neighborhood Filter */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <MapPin className="w-4 h-4" />
-              Neighborhood (optional)
-            </label>
-            <p className="text-xs text-muted-foreground mb-2">
-              Click neighborhoods on the map to focus your restaurant search
-            </p>
-            <NeighborhoodPicker
-              selected={selectedNeighborhoods}
-              onChange={setSelectedNeighborhoods}
-              height="300px"
-            />
-          </div>
-        </CardContent>
-      </Card>
+        {/* Neighborhood Filter */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-2">
+            <MapPin className="w-4 h-4" />
+            Neighborhood (optional)
+          </label>
+          <p className="text-xs text-muted-foreground mb-2">
+            Click neighborhoods on the map to focus your restaurant search
+          </p>
+          <NeighborhoodPicker
+            selected={selectedNeighborhoods}
+            onChange={setSelectedNeighborhoods}
+            height="300px"
+          />
+        </div>
+      </div>
 
       {/* Discovery Log */}
       {(isDiscovering || logs.length > 0) && (
@@ -532,25 +529,23 @@ export function VenueDiscovery({
 
       {/* No results state */}
       {!isDiscovering && restaurants.length === 0 && hasDiscovered && (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">
-              No restaurants found in{' '}
-              {selectedNeighborhoods.length > 0
-                ? `${selectedNeighborhoods.join(', ')} (${city})`
-                : city}
-              {selectedCuisine ? ` serving ${selectedCuisine} cuisine` : ''}.
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Try selecting different neighborhoods, adjusting your filters, or manually import restaurants.
-            </p>
-            <div className="mt-4 flex justify-center gap-2">
-              <Button onClick={() => router.push('/import')}>
-                Import CSV
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="py-12 text-center">
+          <p className="text-muted-foreground">
+            No restaurants found in{' '}
+            {selectedNeighborhoods.length > 0
+              ? `${selectedNeighborhoods.join(', ')} (${city})`
+              : city}
+            {selectedCuisine ? ` serving ${selectedCuisine} cuisine` : ''}.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Try selecting different neighborhoods, adjusting your filters, or manually import restaurants.
+          </p>
+          <div className="mt-4 flex justify-center gap-2">
+            <Button onClick={() => router.push('/import')}>
+              Import CSV
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )
