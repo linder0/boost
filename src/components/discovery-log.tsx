@@ -1,52 +1,14 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { type LogEntry, formatTime, getLevelColor, getLevelIcon } from '@/lib/log-utils'
 
-export interface LogEntry {
-  id: string
-  timestamp: Date
-  message: string
-  level?: 'info' | 'success' | 'warn' | 'error'
-}
+// Re-export LogEntry for consumers
+export type { LogEntry }
 
 interface DiscoveryLogProps {
   logs: LogEntry[]
   isActive?: boolean
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-function getLevelColor(level?: string): string {
-  switch (level) {
-    case 'success':
-      return 'text-green-600'
-    case 'warn':
-      return 'text-yellow-600'
-    case 'error':
-      return 'text-red-600'
-    default:
-      return 'text-muted-foreground'
-  }
-}
-
-function getLevelIcon(level?: string): string {
-  switch (level) {
-    case 'success':
-      return '✓'
-    case 'warn':
-      return '⚠'
-    case 'error':
-      return '✗'
-    default:
-      return '→'
-  }
 }
 
 export function DiscoveryLog({ logs, isActive = false }: DiscoveryLogProps) {

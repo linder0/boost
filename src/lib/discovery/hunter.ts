@@ -54,17 +54,7 @@ const PREFERRED_EMAIL_PREFIXES = [
   'inquiry',
 ]
 
-/**
- * Extract domain from a website URL
- */
-function extractDomain(websiteUrl: string): string | null {
-  try {
-    const url = new URL(websiteUrl.startsWith('http') ? websiteUrl : `https://${websiteUrl}`)
-    return url.hostname.replace('www.', '')
-  } catch {
-    return null
-  }
-}
+import { extractDomain } from './utils'
 
 /**
  * Score an email based on how relevant it is for event inquiries

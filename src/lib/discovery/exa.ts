@@ -258,17 +258,7 @@ function parseReviewResult(result: ExaSearchResult): ExaVenue[] {
   return []
 }
 
-/**
- * Extract domain from URL for deduplication
- */
-function extractDomain(url: string): string {
-  try {
-    const parsed = new URL(url)
-    return parsed.hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
-}
+import { extractDomain } from './utils'
 
 /**
  * Check if a page looks like a generic/non-restaurant page

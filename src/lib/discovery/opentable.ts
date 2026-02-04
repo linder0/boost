@@ -271,34 +271,11 @@ export async function checkOpenTableAvailability(
   }
 }
 
+import { extractTime, getDefaultDate } from './utils'
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Get default date (tomorrow)
- */
-function getDefaultDate(): string {
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  return tomorrow.toISOString().split('T')[0]
-}
-
-/**
- * Extract time from ISO datetime string
- */
-function extractTime(isoString: string): string {
-  try {
-    const date = new Date(isoString)
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    })
-  } catch {
-    return isoString
-  }
-}
 
 /**
  * Extract URL slug from OpenTable profile link

@@ -29,6 +29,7 @@ import {
   estimatePriceRange,
   extractNeighborhood,
   extractBorough,
+  buildSearchQuery,
 } from './utils'
 
 // Re-exports for external use
@@ -400,7 +401,7 @@ async function discoverFromResy(
   cuisine?: string,
   limit: number = 20
 ): Promise<DiscoveredRestaurant[]> {
-  const query = [cuisine, neighborhood, 'private dining'].filter(Boolean).join(' ')
+  const query = buildSearchQuery([cuisine, neighborhood, 'private dining'])
   const result = await searchResyVenues(city, query, limit)
 
   return result.venues.map((venue) => {
@@ -442,7 +443,7 @@ async function discoverFromOpenTable(
   limit: number = 20
 ): Promise<DiscoveredRestaurant[]> {
   const metroId = getMetroId(city)
-  const query = [cuisine, neighborhood, 'private dining'].filter(Boolean).join(' ')
+  const query = buildSearchQuery([cuisine, neighborhood, 'private dining'])
   const result = await searchOpenTableVenues(metroId, query, 20, undefined, '19:00', limit)
 
   return result.venues.map((venue) => {

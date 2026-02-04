@@ -154,6 +154,58 @@ export function normalizeName(name: string): string {
 }
 
 // ============================================================================
+// Time & URL Utilities
+// ============================================================================
+
+/**
+ * Extract time (HH:mm) from an ISO datetime string
+ * Used by OpenTable and Resy for availability slots
+ */
+export function extractTime(isoString: string): string {
+  try {
+    const date = new Date(isoString)
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    })
+  } catch {
+    return isoString
+  }
+}
+
+/**
+ * Extract domain from a URL for deduplication
+ * Handles both full URLs and partial URLs
+ */
+export function extractDomain(url: string): string {
+  try {
+    const fullUrl = url.startsWith('http') ? url : `https://${url}`
+    const parsed = new URL(fullUrl)
+    return parsed.hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+/**
+ * Get default date (tomorrow) in YYYY-MM-DD format
+ * Used for availability searches
+ */
+export function getDefaultDate(): string {
+  const tomorrow = new Date()
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  return tomorrow.toISOString().split('T')[0]
+}
+
+/**
+ * Build a search query from parts, filtering out empty values
+ */
+export function buildSearchQuery(parts: (string | undefined | null)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
+
+// ============================================================================
 // Default Values
 // ============================================================================
 

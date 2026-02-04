@@ -12,6 +12,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { type LogEntry, formatTime, getLevelColor, getLevelIcon } from '@/lib/log-utils'
+
+// Re-export LogEntry for consumers
+export type { LogEntry }
 
 // Discovery source configuration
 export const DISCOVERY_SOURCES = [
@@ -21,13 +25,6 @@ export const DISCOVERY_SOURCES = [
   { id: 'opentable', label: 'OpenTable', enabled: false, status: 'experimental' as const, note: 'Unofficial API' },
   { id: 'beli', label: 'Beli', enabled: false, status: 'coming_soon' as const },
 ] as const
-
-export interface LogEntry {
-  id: string
-  timestamp: Date
-  message: string
-  level?: 'info' | 'success' | 'warn' | 'error'
-}
 
 // Radius options for location filter
 const RADIUS_OPTIONS = [
@@ -61,41 +58,6 @@ interface DiscoveryFiltersProps {
 interface DiscoveryMapCardProps {
   children: ReactNode
   isDiscovering?: boolean
-}
-
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString('en-US', {
-    hour12: false,
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
-
-function getLevelColor(level?: string): string {
-  switch (level) {
-    case 'success':
-      return 'text-green-600'
-    case 'warn':
-      return 'text-yellow-600'
-    case 'error':
-      return 'text-red-600'
-    default:
-      return 'text-muted-foreground'
-  }
-}
-
-function getLevelIcon(level?: string): string {
-  switch (level) {
-    case 'success':
-      return '✓'
-    case 'warn':
-      return '⚠'
-    case 'error':
-      return '✗'
-    default:
-      return '→'
-  }
 }
 
 /**

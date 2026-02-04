@@ -12,7 +12,16 @@ CREATE TABLE IF NOT EXISTS entities (
     -- Core fields (always present)
     name TEXT NOT NULL,
     tags TEXT[] DEFAULT '{}',
-    location TEXT,
+
+    -- Location fields (granular)
+    location TEXT,           -- Legacy field for compatibility
+    address TEXT,            -- Street address
+    neighborhood TEXT,       -- e.g., "Tribeca", "SoHo"
+    city TEXT,               -- e.g., "New York"
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+
+    -- Other core fields
     description TEXT,
     website TEXT,
     popularity FLOAT,
@@ -29,6 +38,8 @@ CREATE TABLE IF NOT EXISTS entities (
 CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name);
 CREATE INDEX IF NOT EXISTS idx_entities_tags ON entities USING GIN(tags);
 CREATE INDEX IF NOT EXISTS idx_entities_metadata ON entities USING GIN(metadata);
+CREATE INDEX IF NOT EXISTS idx_entities_city ON entities(city);
+CREATE INDEX IF NOT EXISTS idx_entities_neighborhood ON entities(neighborhood);
 
 -- ============================================================================
 -- Step 2: Create event_entities junction table
@@ -83,20 +94,26 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_created ON activity_log(created_at);
 -- Step 5: Migrate existing vendor data to entities
 -- ============================================================================
 
-INSERT INTO entities (id, name, tags, location, description, website, popularity, metadata, created_at, updated_at)
+INSERT INTO entities (
+    id, name, tags, location, address, neighborhood, city, latitude, longitude,
+    description, website, popularity, metadata, created_at, updated_at
+)
 SELECT
     id,
     name,
     ARRAY[category]::TEXT[],
-    COALESCE(address, ''),
-    NULL,
+    COALESCE(address, ''),           -- location (legacy)
+    address,                          -- address
+    neighborhood,                     -- neighborhood
+    city,                             -- city
+    latitude,                         -- latitude
+    longitude,                        -- longitude
+    NULL,                             -- description
     website,
     COALESCE(rating, 0) * LN(GREATEST(1, COALESCE((metadata->>'review_count')::int, 1))),
     jsonb_build_object(
         'email', contact_email,
         'phone', phone,
-        'latitude', latitude,
-        'longitude', longitude,
         'cuisine', cuisine,
         'google_place_id', google_place_id,
         'resy_venue_id', resy_venue_id,

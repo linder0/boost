@@ -237,6 +237,8 @@ export async function searchPrivateDining(
   return result.venues
 }
 
+import { extractTime } from './utils'
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -255,22 +257,6 @@ function normalizeCity(city: string): string {
 
   const normalized = city.toLowerCase().trim()
   return cityMap[normalized] || normalized.replace(/\s+/g, '-')
-}
-
-/**
- * Extract time from ISO datetime string
- */
-function extractTime(isoString: string): string {
-  try {
-    const date = new Date(isoString)
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    })
-  } catch {
-    return isoString
-  }
 }
 
 /**

@@ -292,3 +292,191 @@ export async function createEntitiesFromDiscovery(
 
   return (created ?? []) as Entity[]
 }
+
+// ============================================================================
+// Event-Entity Operations
+// ============================================================================
+
+/**
+ * Entity with event-specific status
+ */
+export interface EntityWithEventStatus extends Entity {
+  event_entity?: {
+    status: string
+    notes: string | null
+    outreach_approved: boolean
+  }
+}
+
+/**
+ * Get all entities linked to an event
+ */
+export async function getEntitiesByEvent(eventId: string): Promise<EntityWithEventStatus[]> {
+  validateUUID(eventId, 'event ID')
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('entities')
+    .select(`
+      *,
+      event_entity:event_entities!inner(
+        status,
+        notes,
+        outreach_approved
+      )
+    `)
+    .eq('event_entities.event_id', eventId)
+    .order('created_at', { ascending: false })
+
+  handleSupabaseError(error, 'Failed to fetch entities for event')
+
+  // Flatten the event_entity array to a single object
+  return (data ?? []).map((entity) => ({
+    ...entity,
+    event_entity: Array.isArray(entity.event_entity) 
+      ? entity.event_entity[0] 
+      : entity.event_entity
+  })) as EntityWithEventStatus[]
+}
+
+/**
+ * Link an entity to an event
+ */
+export async function linkEntityToEvent(
+  eventId: string,
+  entityId: string,
+  status: string = 'discovered'
+) {
+  validateUUID(eventId, 'event ID')
+  validateUUID(entityId, 'entity ID')
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('event_entities')
+    .upsert({
+      event_id: eventId,
+      entity_id: entityId,
+      status,
+    })
+    .select()
+    .single()
+
+  handleSupabaseError(error, 'Failed to link entity to event')
+  revalidatePath(`/events/${eventId}`)
+
+  return data
+}
+
+/**
+ * Update an entity's status within an event
+ */
+export async function updateEventEntityStatus(
+  eventId: string,
+  entityId: string,
+  status: string,
+  notes?: string
+) {
+  validateUUID(eventId, 'event ID')
+  validateUUID(entityId, 'entity ID')
+
+  const supabase = await createClient()
+
+  const updateData: Record<string, unknown> = { status }
+  if (notes !== undefined) {
+    updateData.notes = notes
+  }
+
+  const { data, error } = await supabase
+    .from('event_entities')
+    .update(updateData)
+    .eq('event_id', eventId)
+    .eq('entity_id', entityId)
+    .select()
+    .single()
+
+  handleSupabaseError(error, 'Failed to update entity status')
+  revalidatePath(`/events/${eventId}`)
+
+  return data
+}
+
+/**
+ * Approve an entity for outreach within an event
+ */
+export async function approveForOutreach(
+  eventId: string,
+  entityId: string,
+  approved: boolean = true
+) {
+  validateUUID(eventId, 'event ID')
+  validateUUID(entityId, 'entity ID')
+
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('event_entities')
+    .update({ outreach_approved: approved })
+    .eq('event_id', eventId)
+    .eq('entity_id', entityId)
+    .select()
+    .single()
+
+  handleSupabaseError(error, 'Failed to update outreach approval')
+  revalidatePath(`/events/${eventId}`)
+
+  return data
+}
+
+/**
+ * Bulk link entities to an event (for discovery results)
+ */
+export async function linkEntitiesToEvent(
+  eventId: string,
+  entityIds: string[]
+) {
+  if (entityIds.length === 0) {
+    return { success: true, count: 0 }
+  }
+
+  validateUUID(eventId, 'event ID')
+
+  const supabase = await createClient()
+
+  const links = entityIds.map(entityId => ({
+    event_id: eventId,
+    entity_id: entityId,
+    status: 'discovered',
+  }))
+
+  const { error } = await supabase
+    .from('event_entities')
+    .upsert(links, { onConflict: 'event_id,entity_id' })
+
+  handleSupabaseError(error, 'Failed to link entities to event')
+  revalidatePath(`/events/${eventId}`)
+
+  return { success: true, count: entityIds.length }
+}
+
+/**
+ * Unlink an entity from an event
+ */
+export async function unlinkEntityFromEvent(eventId: string, entityId: string) {
+  validateUUID(eventId, 'event ID')
+  validateUUID(entityId, 'entity ID')
+
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('event_entities')
+    .delete()
+    .eq('event_id', eventId)
+    .eq('entity_id', entityId)
+
+  handleSupabaseError(error, 'Failed to unlink entity from event')
+  revalidatePath(`/events/${eventId}`)
+
+  return { success: true }
+}
