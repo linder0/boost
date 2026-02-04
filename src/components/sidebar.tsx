@@ -341,7 +341,10 @@ function EventListItem({
         </Link>
       )}
       <DropdownMenu>
-        <DropdownMenuTrigger className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 p-1 rounded hover:bg-sidebar-accent cursor-pointer">
+        <DropdownMenuTrigger 
+          id={`event-menu-${event.id}`}
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100 p-1 rounded hover:bg-sidebar-accent cursor-pointer"
+        >
           <MoreDotsIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" side="right" className="w-40">
@@ -387,6 +390,7 @@ function UserMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
+        id="user-menu-trigger"
         className="flex items-center gap-3 w-full pl-[3.5px] pr-3 py-2 rounded-lg hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent focus:outline-none cursor-pointer overflow-hidden transition-all duration-300"
         title={isCollapsed ? displayName : undefined}
       >
