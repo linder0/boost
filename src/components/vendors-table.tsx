@@ -92,7 +92,7 @@ export function VendorsTable({
             <TableHead>Cuisine</TableHead>
             <TableHead>Capacity</TableHead>
             <TableHead>Minimum</TableHead>
-            {mode === 'saved' && <TableHead>Contact</TableHead>}
+            <TableHead>Contact</TableHead>
             <TableHead>Neighborhood</TableHead>
             <TableHead>Address</TableHead>
             <TableHead>Source</TableHead>
@@ -169,14 +169,12 @@ export function VendorsTable({
                     <span className="text-sm">{formatMinimum(vendor.privateDiningMinimum)}</span>
                   </div>
                 </TableCell>
-                {mode === 'saved' && (
-                  <TableCell>
-                    <VendorEmailDisplay
-                      email={vendor.email || ''}
-                      emailConfidence={vendor.emailConfidence}
-                    />
-                  </TableCell>
-                )}
+                <TableCell>
+                  <VendorEmailDisplay
+                    email={vendor.email || ''}
+                    emailConfidence={vendor.emailConfidence}
+                  />
+                </TableCell>
                 <TableCell>
                   <span className="text-sm">
                     {vendor.neighborhood || vendor.city || '-'}
