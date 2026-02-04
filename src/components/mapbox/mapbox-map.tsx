@@ -156,6 +156,26 @@ export function MapboxMap({
     }
   }, [accessToken, interactive, clickToSet])
 
+  // ResizeObserver to handle container size changes (e.g., sidebar toggle)
+  useEffect(() => {
+    if (!mapContainer.current || !mapRef.current) return
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Use requestAnimationFrame to debounce and ensure smooth resize
+      requestAnimationFrame(() => {
+        if (mapRef.current) {
+          mapRef.current.resize()
+        }
+      })
+    })
+
+    resizeObserver.observe(mapContainer.current)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [mapReady]) // Re-run when map is ready
+
   // Update center/zoom when props change
   useEffect(() => {
     if (mapRef.current && mapReady) {

@@ -180,11 +180,20 @@ const NYC_NEIGHBORHOOD_BOUNDS: Record<string, {
   },
 }
 
+export interface VenueMarker {
+  id: string
+  lat: number
+  lng: number
+  label?: string
+}
+
 interface NeighborhoodPickerProps {
   selected: string[]
   onChange: (neighborhoods: string[]) => void
   height?: string
   className?: string
+  markers?: VenueMarker[]
+  hideFooter?: boolean
 }
 
 export function NeighborhoodPicker({
@@ -192,10 +201,13 @@ export function NeighborhoodPicker({
   onChange,
   height = '400px',
   className = '',
+  markers = [],
+  hideFooter = false,
 }: NeighborhoodPickerProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const mapboxglRef = useRef<any>(null)
+  const markersRef = useRef<Map<string, any>>(new Map())
   const [mapReady, setMapReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hoveredNeighborhood, setHoveredNeighborhood] = useState<string | null>(null)
@@ -278,6 +290,26 @@ export function NeighborhoodPicker({
       }
     }
   }, [accessToken])
+
+  // ResizeObserver to handle container size changes (e.g., sidebar toggle)
+  useEffect(() => {
+    if (!mapContainer.current || !mapRef.current) return
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Use requestAnimationFrame to debounce and ensure smooth resize
+      requestAnimationFrame(() => {
+        if (mapRef.current) {
+          mapRef.current.resize()
+        }
+      })
+    })
+
+    resizeObserver.observe(mapContainer.current)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [mapReady]) // Re-run when map is ready
 
   // Add neighborhood layers
   const addNeighborhoodLayers = (map: any) => {
@@ -398,6 +430,64 @@ export function NeighborhoodPicker({
     })
   }, [selected, hoveredNeighborhood, mapReady])
 
+  // Update venue markers when markers prop changes
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !mapboxglRef.current) return
+
+    const mapboxgl = mapboxglRef.current
+    const existingMarkerIds = new Set(markersRef.current.keys())
+    const newMarkerIds = new Set(markers.map((m) => m.id))
+
+    // Remove markers that are no longer in the list
+    existingMarkerIds.forEach((id) => {
+      if (!newMarkerIds.has(id)) {
+        const marker = markersRef.current.get(id)
+        if (marker) {
+          marker.remove()
+          markersRef.current.delete(id)
+        }
+      }
+    })
+
+    // Add new markers
+    markers.forEach((m) => {
+      if (!markersRef.current.has(m.id)) {
+        // Create marker element
+        const el = document.createElement('div')
+        el.className = 'venue-marker'
+        el.style.width = '12px'
+        el.style.height = '12px'
+        el.style.backgroundColor = '#ef4444'
+        el.style.borderRadius = '50%'
+        el.style.border = '2px solid white'
+        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
+        el.style.cursor = 'pointer'
+
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([m.lng, m.lat])
+          .addTo(mapRef.current)
+
+        // Add tooltip on hover
+        if (m.label) {
+          const popup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 10,
+          }).setText(m.label)
+
+          el.addEventListener('mouseenter', () => {
+            popup.setLngLat([m.lng, m.lat]).addTo(mapRef.current)
+          })
+          el.addEventListener('mouseleave', () => {
+            popup.remove()
+          })
+        }
+
+        markersRef.current.set(m.id, marker)
+      }
+    })
+  }, [markers, mapReady])
+
   if (!accessToken) {
     return (
       <div
@@ -426,17 +516,19 @@ export function NeighborhoodPicker({
   }
 
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={`${hideFooter ? 'h-full' : 'space-y-2'} ${className}`}>
       <div
         ref={mapContainer}
-        className="rounded-md overflow-hidden bg-muted"
-        style={{ height }}
+        className={`overflow-hidden bg-muted ${hideFooter ? 'h-full' : 'rounded-md'}`}
+        style={hideFooter ? undefined : { height }}
       />
-      <p className="text-xs text-muted-foreground">
-        {selected.length === 0
-          ? 'Click on neighborhoods to select them, or leave empty to find restaurants across all of NYC'
-          : `Finding restaurants in: ${selected.join(', ')}`}
-      </p>
+      {!hideFooter && (
+        <p className="text-xs text-muted-foreground">
+          {selected.length === 0
+            ? 'Click on neighborhoods to select them, or leave empty to find restaurants across all of NYC'
+            : `Finding restaurants in: ${selected.join(', ')}`}
+        </p>
+      )}
     </div>
   )
 }

@@ -21,6 +21,11 @@ import {
   getBeliRankings,
 } from './clawdbot'
 import {
+  searchExaVenues,
+  exaVenueToDiscovered,
+  ExaVenue,
+} from './exa'
+import {
   estimatePriceRange,
   extractNeighborhood,
   extractBorough,
@@ -46,13 +51,15 @@ export {
   discoverContactInfo,
 } from './clawdbot'
 export type { ClawdbotTask, ClawdbotTaskType } from './clawdbot'
+export { searchExaVenues } from './exa'
+export type { ExaVenue, ExaSearchResult } from './exa'
 export * from './utils'
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type DiscoverySource = 'google_places' | 'resy' | 'opentable' | 'beli' | 'demo'
+export type DiscoverySource = 'google_places' | 'resy' | 'opentable' | 'beli' | 'exa' | 'demo'
 
 export interface DiscoveredRestaurant {
   name: string
@@ -91,6 +98,13 @@ export interface DiscoveredRestaurant {
   hasOnlineReservation?: boolean
 }
 
+export interface DiscoveryLogEvent {
+  message: string
+  level?: 'info' | 'success' | 'warn' | 'error'
+}
+
+export type DiscoveryLogger = (event: DiscoveryLogEvent) => void | Promise<void>
+
 export interface DiscoveryOptions {
   city?: string
   neighborhood?: string // Single neighborhood (legacy support)
@@ -101,6 +115,7 @@ export interface DiscoveryOptions {
   requirePrivateDining?: boolean
   sources?: DiscoverySource[]
   limit?: number
+  logger?: DiscoveryLogger // Optional callback for logging
 }
 
 // ============================================================================
@@ -123,7 +138,16 @@ export async function discoverRestaurants(
     partySize = 20,
     sources = ['google_places', 'resy'],
     limit = 30,
+    logger,
   } = options
+
+  // Helper to log if logger is provided (with small delay for smooth UI)
+  const log = async (message: string, level?: DiscoveryLogEvent['level'], delayMs: number = 200) => {
+    if (logger) {
+      await logger({ message, level })
+      await sleep(delayMs)
+    }
+  }
 
   // Build list of neighborhoods to search
   // Support both single neighborhood (legacy) and multiple neighborhoods
@@ -132,6 +156,33 @@ export async function discoverRestaurants(
     : neighborhood
       ? [neighborhood]
       : [undefined] // Search without neighborhood filter if none provided
+
+  // Log the search parameters (single source of truth for what we're searching)
+  await log(`Starting restaurant discovery in ${city}...`, undefined, 300)
+
+  const sourceLabels = sources.map((s) => {
+    switch (s) {
+      case 'google_places': return 'Google Places'
+      case 'resy': return 'Resy'
+      case 'opentable': return 'OpenTable'
+      case 'beli': return 'Beli'
+      case 'exa': return 'Exa'
+      default: return s
+    }
+  })
+  await log(`Searching: ${sourceLabels.join(', ')}...`)
+
+  if (searchNeighborhoods.length > 0 && searchNeighborhoods[0]) {
+    await log(`Neighborhoods: ${searchNeighborhoods.filter(Boolean).join(', ')}`)
+  }
+
+  if (cuisine) {
+    await log(`Cuisine: ${cuisine}`)
+  }
+
+  if (partySize && partySize !== 20) {
+    await log(`Party size: ${partySize} guests`)
+  }
 
   const allResults: DiscoveredRestaurant[] = []
   const seenNames = new Set<string>()
@@ -183,17 +234,32 @@ export async function discoverRestaurants(
       }
     }
 
+    if (sources.includes('exa')) {
+      discoveryPromises.push(
+        discoverFromExa(city, cuisine, perNeighborhoodLimit).catch((err) => {
+          console.error('Exa discovery error:', err)
+          return []
+        })
+      )
+    }
+
     // Wait for all sources for this neighborhood
     const results = await Promise.all(discoveryPromises)
 
-    // Merge and deduplicate
+    // Collect unique results by source for fair interleaving
+    const resultsBySource: DiscoveredRestaurant[][] = []
+
     for (const sourceResults of results) {
+      const uniqueFromSource: DiscoveredRestaurant[] = []
+      console.log(`[Discovery] Processing ${sourceResults.length} results from source`)
+
       for (const restaurant of sourceResults) {
         const normalizedName = restaurant.name.toLowerCase().trim()
         if (!seenNames.has(normalizedName)) {
           seenNames.add(normalizedName)
-          allResults.push(restaurant)
+          uniqueFromSource.push(restaurant)
         } else {
+          console.log(`[Discovery] Duplicate skipped: "${restaurant.name}" (${restaurant.discoverySource})`)
           // Merge data from duplicate (e.g., add beliRank from Beli to existing record)
           const existing = allResults.find(
             (r) => r.name.toLowerCase().trim() === normalizedName
@@ -203,10 +269,64 @@ export async function discoverRestaurants(
           }
         }
       }
+
+      if (uniqueFromSource.length > 0) {
+        resultsBySource.push(uniqueFromSource)
+      }
+    }
+
+    // Interleave results from different sources (round-robin)
+    let index = 0
+    let hasMore = true
+    while (hasMore) {
+      hasMore = false
+      for (const sourceResults of resultsBySource) {
+        if (index < sourceResults.length) {
+          allResults.push(sourceResults[index])
+          hasMore = true
+        }
+      }
+      index++
     }
   }
 
-  return allResults.slice(0, limit)
+  const finalResults = allResults.slice(0, limit)
+
+  // Log results summary
+  if (finalResults.length === 0) {
+    await log('No restaurants found. Try adjusting your search criteria.', 'warn')
+  } else {
+    await log(`Found ${finalResults.length} restaurants`, 'success')
+
+    // Summary by source
+    const bySource = finalResults.reduce((acc, r) => {
+      acc[r.discoverySource] = (acc[r.discoverySource] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+
+    const sourceSummary = Object.entries(bySource)
+      .map(([source, count]) => `${count} from ${source}`)
+      .join(', ')
+    await log(`Discovery complete! ${sourceSummary}`, 'success')
+
+    const withPrivateDining = finalResults.filter((r) => r.hasPrivateDining).length
+    const withEmails = finalResults.filter((r) => r.email).length
+
+    if (withPrivateDining > 0) {
+      await log(`${withPrivateDining} with verified private dining`)
+    }
+
+    if (withEmails > 0) {
+      await log(`${withEmails} with verified contact emails`)
+    }
+  }
+
+  return finalResults
+}
+
+// Helper for delays
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 // ============================================================================
@@ -419,6 +539,34 @@ async function discoverFromBeli(limit: number = 50): Promise<DiscoveredRestauran
     discoverySource: 'beli' as const,
     website: r.website,
     phone: r.phone,
+  }))
+}
+
+/**
+ * Discover from Exa (semantic web search)
+ */
+async function discoverFromExa(
+  city: string,
+  cuisine?: string,
+  limit: number = 20
+): Promise<DiscoveredRestaurant[]> {
+  const venues = await searchExaVenues(city, cuisine, limit)
+
+  console.log(`[Exa] Converting ${venues.length} venues to DiscoveredRestaurant format`)
+  venues.forEach((v, i) => console.log(`  [Exa] ${i + 1}. ${v.name}`))
+
+  return venues.map((venue) => ({
+    name: venue.name,
+    category: 'Restaurant' as const,
+    city,
+    // Exa doesn't provide structured location data, so we leave these undefined
+    // They can be enriched later via Google Places API if needed
+    capacityMin: 10,
+    capacityMax: 100,
+    pricePerPersonMin: 75,
+    pricePerPersonMax: 200,
+    discoverySource: 'exa' as const,
+    website: venue.url,
   }))
 }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { PanelLeft, PanelLeftClose, Search, Upload, List } from 'lucide-react'
 
 export function Sidebar() {
@@ -44,21 +45,21 @@ export function Sidebar() {
     <aside className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 overflow-hidden ${isCollapsed ? 'w-[68px]' : 'w-64'}`}>
       {/* Logo and Toggle */}
       <div className="relative flex items-center h-14 mt-4 px-3.5">
-        {/* Full VRM logo - hidden when collapsed */}
+        {/* Logo - always visible, clickable to home when expanded, toggles sidebar when collapsed */}
         <Link
           href="/"
-          className={`flex items-center h-10 px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          className={`absolute left-[14px] top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg cursor-pointer ${isCollapsed ? 'pointer-events-none' : ''}`}
         >
-          <span className="text-xl text-sidebar-foreground font-bold">VRM</span>
+          <Image src="/logo.svg" alt="Logo" width={32} height={32} className="h-8 w-8" />
         </Link>
 
-        {/* Small "V" logo button - shown when collapsed */}
+        {/* Clickable overlay for collapsed state to expand sidebar */}
         <button
           onClick={toggleCollapsed}
           className={`group absolute left-[14px] top-1/2 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent cursor-pointer transition-opacity duration-300 ${isCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           title="Expand sidebar"
         >
-          <span className="text-lg font-bold group-hover:opacity-0 transition-opacity">V</span>
+          <span className="h-8 w-8 group-hover:opacity-0 transition-opacity" />
           <PanelLeft className="h-5 w-5 absolute opacity-0 group-hover:opacity-100 transition-opacity" />
         </button>
 

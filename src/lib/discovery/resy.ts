@@ -97,6 +97,12 @@ export async function searchResyVenues(
   query?: string,
   limit: number = 20
 ): Promise<ResySearchResult> {
+  // Check for API key
+  if (!RESY_API_KEY) {
+    console.warn('[Resy] No RESY_API_KEY configured - skipping Resy search')
+    return { venues: [], totalCount: 0 }
+  }
+
   try {
     // Normalize city name for Resy
     const normalizedCity = normalizeCity(city)
@@ -111,19 +117,22 @@ export async function searchResyVenues(
       searchParams.set('query', query)
     }
 
+    console.log(`[Resy] Searching: city=${normalizedCity}, query=${query || 'none'}`)
+
     const response = await fetch(
       `${RESY_API_BASE}/3/venuesearch/search?${searchParams}`,
       {
         headers: {
-          'Authorization': RESY_API_KEY ? `ResyAPI api_key="${RESY_API_KEY}"` : '',
+          'Authorization': `ResyAPI api_key="${RESY_API_KEY}"`,
           'Content-Type': 'application/json',
-          'X-Resy-Universal-Auth': RESY_API_KEY || '',
+          'X-Resy-Universal-Auth': RESY_API_KEY,
         },
       }
     )
 
     if (!response.ok) {
-      console.warn(`Resy search failed: ${response.status}`)
+      const errorText = await response.text().catch(() => 'Unable to read response')
+      console.error(`[Resy] Search failed: HTTP ${response.status} - ${errorText.slice(0, 200)}`)
       return { venues: [], totalCount: 0 }
     }
 
@@ -143,12 +152,13 @@ export async function searchResyVenues(
       urlSlug: hit.url_slug,
     }))
 
+    console.log(`[Resy] Found ${venues.length} venues`)
     return {
       venues,
       totalCount: data.search.nbHits,
     }
   } catch (error) {
-    console.error('Resy search error:', error)
+    console.error('[Resy] Search error:', error instanceof Error ? error.message : error)
     return { venues: [], totalCount: 0 }
   }
 }

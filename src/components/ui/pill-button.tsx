@@ -9,18 +9,21 @@ interface PillButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> 
 }
 
 export const PillButton = forwardRef<HTMLButtonElement, PillButtonProps>(
-  ({ className, selected = false, size = 'md', children, ...props }, ref) => {
+  ({ className, selected = false, size = 'md', disabled, children, ...props }, ref) => {
     return (
       <button
         ref={ref}
         type="button"
+        disabled={disabled}
         className={cn(
-          'inline-flex items-center gap-1 rounded-full font-medium transition-colors cursor-pointer',
+          'inline-flex items-center gap-1 rounded-full font-medium transition-colors',
           size === 'sm' && 'px-2.5 py-1 text-xs',
           size === 'md' && 'px-3 py-1.5 text-sm',
-          selected
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted text-muted-foreground hover:bg-muted/80',
+          disabled
+            ? 'bg-muted/50 text-muted-foreground/50 cursor-not-allowed'
+            : selected
+              ? 'bg-primary text-primary-foreground cursor-pointer'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80 cursor-pointer',
           className
         )}
         {...props}

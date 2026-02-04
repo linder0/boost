@@ -3,6 +3,7 @@ import {
   discoverRestaurants,
   DiscoveredRestaurant,
   DiscoverySource,
+  DiscoveryLogEvent,
 } from '@/lib/discovery'
 
 // Helper to send SSE events
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   const city = searchParams.get('city') || 'New York'
   const cuisine = searchParams.get('cuisine') || undefined
   const partySize = parseInt(searchParams.get('partySize') || '10', 10)
-  
+
   // Support both single 'neighborhood' and multiple 'neighborhoods' params
   const neighborhoodsParam = searchParams.get('neighborhoods')
   const singleNeighborhood = searchParams.get('neighborhood')
@@ -34,41 +35,21 @@ export async function GET(request: NextRequest) {
   // Parse sources from query param or use defaults
   const sources: DiscoverySource[] = sourcesParam
     ? sourcesParam.split(',') as DiscoverySource[]
-    : ['google_places', 'resy']
+    : ['google_places', 'exa']
 
   // Create streaming response
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // Step 1: Log start
-        sendEvent(controller, 'log', {
-          message: `Starting restaurant discovery in ${city}...`,
-        })
-        await sleep(300)
-
-        // Step 2: Log sources
-        const sourceLabels = sources.map((s) => {
-          switch (s) {
-            case 'google_places': return 'Google Places'
-            case 'resy': return 'Resy'
-            case 'opentable': return 'OpenTable'
-            case 'beli': return 'Beli'
-            default: return s
-          }
-        })
-        sendEvent(controller, 'log', {
-          message: `Searching: ${sourceLabels.join(', ')}...`,
-        })
-        await sleep(200)
-
-        // Step 3: Log which neighborhoods we're searching
-        if (neighborhoods?.length) {
+        // Logger callback that sends SSE events
+        const logger = (event: DiscoveryLogEvent) => {
           sendEvent(controller, 'log', {
-            message: `Searching in: ${neighborhoods.join(', ')}`,
+            message: event.message,
+            level: event.level,
           })
-          await sleep(200)
         }
 
+        // Discovery with logging - the discovery function logs what it's actually searching
         const restaurants = await discoverRestaurants({
           city,
           neighborhoods,
@@ -76,70 +57,24 @@ export async function GET(request: NextRequest) {
           partySize,
           sources,
           limit: 30,
+          logger,
         })
 
         if (restaurants.length === 0) {
-          sendEvent(controller, 'log', {
-            message: 'No restaurants found. Try adjusting your search criteria.',
-            level: 'warn',
-          })
           sendEvent(controller, 'complete', { count: 0 })
           controller.close()
           return
         }
 
-        sendEvent(controller, 'log', {
-          message: `Found ${restaurants.length} restaurants`,
-          level: 'success',
-        })
-        await sleep(200)
-
-        // Step 4: Stream results
-        const discoveredRestaurants: DiscoveredRestaurant[] = []
-
+        // Stream results to client
         for (const restaurant of restaurants) {
-          discoveredRestaurants.push(restaurant)
-
-          // Stream the restaurant immediately
           sendEvent(controller, 'venue', { data: restaurantToLegacyFormat(restaurant) })
           await sleep(100) // Small delay for visual effect
         }
 
-        // Step 5: Summary by source
-        const bySource = restaurants.reduce((acc, r) => {
-          acc[r.discoverySource] = (acc[r.discoverySource] || 0) + 1
-          return acc
-        }, {} as Record<string, number>)
-
-        const sourceSummary = Object.entries(bySource)
-          .map(([source, count]) => `${count} from ${source}`)
-          .join(', ')
-
-        const withPrivateDining = restaurants.filter((r) => r.hasPrivateDining).length
-        const withEmails = restaurants.filter((r) => r.email).length
-
-        sendEvent(controller, 'log', {
-          message: `Discovery complete! ${sourceSummary}`,
-          level: 'success',
-        })
-
-        if (withPrivateDining > 0) {
-          sendEvent(controller, 'log', {
-            message: `${withPrivateDining} with verified private dining`,
-            level: 'info',
-          })
-        }
-
-        if (withEmails > 0) {
-          sendEvent(controller, 'log', {
-            message: `${withEmails} with verified contact emails`,
-            level: 'info',
-          })
-        }
-
         sendEvent(controller, 'complete', {
-          count: discoveredRestaurants.length,
-          venues: discoveredRestaurants.map(restaurantToLegacyFormat),
+          count: restaurants.length,
+          venues: restaurants.map(restaurantToLegacyFormat),
         })
 
         controller.close()

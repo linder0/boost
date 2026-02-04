@@ -57,8 +57,8 @@ export function CSVImport() {
 
     const nameIdx = headers.indexOf('name')
     const categoryIdx = headers.indexOf('category')
-    const emailIdx = headers.indexOf('email') !== -1 
-      ? headers.indexOf('email') 
+    const emailIdx = headers.indexOf('email') !== -1
+      ? headers.indexOf('email')
       : headers.indexOf('contact_email')
     const locationIdx = headers.indexOf('location')
     const websiteIdx = headers.indexOf('website')

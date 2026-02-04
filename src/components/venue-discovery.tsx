@@ -1,16 +1,14 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { PillButton } from '@/components/ui/pill-button'
 import { VendorsTable, VendorRow, discoveredToVendorRow } from './vendors-table'
 import { createEntitiesFromDiscovery, DiscoveredEntityInput } from '@/app/actions/entities'
 import { discoveredRestaurantToEntity } from '@/lib/discovery/utils'
-import { DiscoveryLog, LogEntry } from '@/components/discovery-log'
-import { CUISINE_TYPES } from '@/lib/entities'
-import { NeighborhoodPicker } from '@/components/mapbox'
-import { MapPin } from 'lucide-react'
+import { DiscoveryFilters, DiscoveryMapCard, LogEntry, DISCOVERY_SOURCES } from '@/components/discovery-card'
+import { Loader2 } from 'lucide-react'
+import { NeighborhoodPicker, VenueMarker } from '@/components/mapbox'
 
 interface VenueDiscoveryProps {
   existingVendorNames?: string[]
@@ -61,14 +59,6 @@ function getRestaurantId(restaurant: DiscoveredRestaurant): string {
   const normalizedName = restaurant.name.toLowerCase().replace(/[^a-z0-9]/g, '')
   return `${normalizedName}-${restaurant.discoverySource || 'unknown'}`
 }
-
-// Discovery source options
-const DISCOVERY_SOURCES = [
-  { id: 'google_places', label: 'Google', enabled: true },
-  { id: 'resy', label: 'Resy', enabled: true },
-  { id: 'opentable', label: 'OpenTable', enabled: true },
-  { id: 'beli', label: 'Beli', enabled: false }, // Requires Clawdbot
-] as const
 
 // Cache key for sessionStorage
 const DISCOVERY_CACHE_KEY = 'discovery-cache'
@@ -173,15 +163,30 @@ export function VenueDiscovery({
 
   // Ref to prevent double-execution in React 18 StrictMode
   const discoveryInitiated = useRef(false)
+  // Ref to track if we should clear old results on first new result
+  const isFirstResult = useRef(false)
 
   // Filters
   const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null)
   const [selectedSources, setSelectedSources] = useState<Set<string>>(
-    new Set(['google_places', 'resy'])
+    new Set(['google_places', 'exa'])
   )
   const [selectedNeighborhoods, setSelectedNeighborhoods] = useState<string[]>([])
+  const [selectedRadius, setSelectedRadius] = useState<string | null>(null)
   const [city] = useState('New York') // Default city
   const [partySize] = useState(10) // Default party size
+
+  // Compute venue markers from discovered restaurants for map display
+  const venueMarkers: VenueMarker[] = useMemo(() => {
+    return restaurants
+      .filter((r) => r.latitude && r.longitude)
+      .map((r) => ({
+        id: getRestaurantId(r),
+        lat: r.latitude!,
+        lng: r.longitude!,
+        label: r.name,
+      }))
+  }, [restaurants])
 
   const addLog = useCallback((message: string, level?: LogEntry['level']) => {
     setLogs((prev) => [
@@ -219,17 +224,22 @@ export function VenueDiscovery({
 
   const startDiscovery = useCallback(async () => {
     setIsDiscovering(true)
-    setRestaurants([])
+    // Don't clear restaurants yet - keep them visible with loading overlay
+    // They'll be cleared when the first new result arrives
+    isFirstResult.current = true
     setSelectedIds(new Set())
     setLogs([])
     setError(null)
 
     try {
-      // Build query params
+      // Build query params - filter to only enabled sources
+      const enabledSourceIds = new Set(DISCOVERY_SOURCES.filter(s => s.enabled).map(s => s.id))
+      const activeSources = Array.from(selectedSources).filter(s => enabledSourceIds.has(s))
+
       const params = new URLSearchParams({
         city,
         partySize: String(partySize),
-        sources: Array.from(selectedSources).join(','),
+        sources: activeSources.join(','),
       })
       if (selectedCuisine) {
         params.set('cuisine', selectedCuisine)
@@ -274,15 +284,21 @@ export function VenueDiscovery({
                   // Add restaurant with deduplication by name
                   const newRestaurant = event.data as DiscoveredRestaurant
                   setRestaurants((prev) => {
+                    // Clear old results when first new result arrives
+                    const baseList = isFirstResult.current ? [] : prev
+                    if (isFirstResult.current) {
+                      isFirstResult.current = false
+                    }
+
                     const nameLower = newRestaurant.name.toLowerCase().replace(/[^a-z0-9]/g, '')
 
-                    const isDuplicate = prev.some((r) => {
+                    const isDuplicate = baseList.some((r) => {
                       const existingName = r.name.toLowerCase().replace(/[^a-z0-9]/g, '')
                       return existingName === nameLower
                     })
 
-                    if (isDuplicate) return prev
-                    return [...prev, newRestaurant]
+                    if (isDuplicate) return baseList
+                    return [...baseList, newRestaurant]
                   })
                   break
                 }
@@ -399,89 +415,47 @@ export function VenueDiscovery({
   )
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
+    <div className="w-full space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Discover Restaurants</h1>
-          <p className="text-muted-foreground">
-            Find private dining options in {city}
-          </p>
-        </div>
-        <Button
-          onClick={startDiscovery}
-          disabled={isDiscovering}
-          size="lg"
-        >
-          {isDiscovering ? 'Discovering...' : 'Search Again'}
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold">Discover Restaurants</h1>
+        <p className="text-muted-foreground">
+          Find private dining options in {city}
+        </p>
       </div>
 
-      {/* Filters */}
-      <div className="space-y-6">
-        {/* Discovery Sources */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Search Sources</label>
-          <div className="flex flex-wrap gap-2">
-            {DISCOVERY_SOURCES.map((source) => (
-              <PillButton
-                key={source.id}
-                selected={selectedSources.has(source.id)}
-                onClick={() => toggleSource(source.id)}
-                disabled={!source.enabled || isDiscovering}
-              >
-                {source.label}
-                {!source.enabled && <span className="ml-1 text-xs opacity-50">(soon)</span>}
-              </PillButton>
-            ))}
-          </div>
+      {/* Side-by-side: Flat Filters (left) | Map Card (right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Left Column: Flat Filters */}
+        <div className="h-[500px]">
+          <DiscoveryFilters
+          selectedSources={selectedSources}
+          onToggleSource={toggleSource}
+          selectedCuisine={selectedCuisine}
+          onCuisineChange={setSelectedCuisine}
+          selectedNeighborhoods={selectedNeighborhoods}
+          onNeighborhoodsChange={setSelectedNeighborhoods}
+          selectedRadius={selectedRadius}
+          onRadiusChange={setSelectedRadius}
+          logs={logs}
+          isDiscovering={isDiscovering}
+          hasDiscovered={hasDiscovered}
+          onSearch={startDiscovery}
+          resultCount={restaurants.length}
+          />
         </div>
 
-        {/* Cuisine Filter */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Cuisine (optional)</label>
-          <div className="flex flex-wrap gap-2">
-            <PillButton
-              selected={selectedCuisine === null}
-              onClick={() => setSelectedCuisine(null)}
-              disabled={isDiscovering}
-            >
-              All
-            </PillButton>
-            {CUISINE_TYPES.slice(0, 8).map((cuisine) => (
-              <PillButton
-                key={cuisine}
-                selected={selectedCuisine === cuisine}
-                onClick={() => setSelectedCuisine(cuisine)}
-                disabled={isDiscovering}
-              >
-                {cuisine}
-              </PillButton>
-            ))}
-          </div>
-        </div>
-
-        {/* Neighborhood Filter */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium flex items-center gap-2">
-            <MapPin className="w-4 h-4" />
-            Neighborhood (optional)
-          </label>
-          <p className="text-xs text-muted-foreground mb-2">
-            Click neighborhoods on the map to focus your restaurant search
-          </p>
+        {/* Right Column: Map in Card */}
+        <DiscoveryMapCard isDiscovering={isDiscovering}>
           <NeighborhoodPicker
             selected={selectedNeighborhoods}
             onChange={setSelectedNeighborhoods}
-            height="300px"
+            height="100%"
+            markers={venueMarkers}
+            hideFooter
           />
-        </div>
+        </DiscoveryMapCard>
       </div>
-
-      {/* Discovery Log */}
-      {(isDiscovering || logs.length > 0) && (
-        <DiscoveryLog logs={logs} isActive={isDiscovering} />
-      )}
 
       {/* Results Table */}
       {restaurants.length > 0 && (
@@ -491,7 +465,7 @@ export function VenueDiscovery({
               {selectedIds.size} of {restaurants.length} selected
               {isDiscovering && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  (streaming...)
+                  (searching...)
                 </span>
               )}
             </p>
@@ -500,13 +474,24 @@ export function VenueDiscovery({
             </Button>
           </div>
 
-          <VendorsTable
-            vendors={vendorRows}
-            selectedIds={selectedIds}
-            onToggleSelection={toggleSelection}
-            onToggleAll={toggleAll}
-            mode="discovery"
-          />
+          <div className="relative">
+            {/* Loading overlay */}
+            {isDiscovering && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/70 rounded-lg">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Searching...</span>
+                </div>
+              </div>
+            )}
+            <VendorsTable
+              vendors={vendorRows}
+              selectedIds={selectedIds}
+              onToggleSelection={toggleSelection}
+              onToggleAll={toggleAll}
+              mode="discovery"
+            />
+          </div>
 
           {error && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">

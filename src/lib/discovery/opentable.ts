@@ -103,6 +103,8 @@ export async function searchOpenTableVenues(
     const searchDate = date || getDefaultDate()
     const dateTime = `${searchDate}T${time}`
 
+    console.log(`[OpenTable] Searching: metro=${metro}, query=${query || 'none'}, date=${searchDate}`)
+
     // GraphQL query for restaurant search
     const gqlQuery = {
       operationName: 'RestaurantSearch',
@@ -166,13 +168,15 @@ export async function searchOpenTableVenues(
     })
 
     if (!response.ok) {
-      console.error('OpenTable search failed:', response.status)
+      const errorText = await response.text().catch(() => 'Unable to read response')
+      console.error(`[OpenTable] Search failed: HTTP ${response.status} - ${errorText.slice(0, 200)}`)
       return { venues: [], totalCount: 0 }
     }
 
     const data: GQLSearchResponse = await response.json()
 
     if (!data.data?.restaurantSearch?.restaurants) {
+      console.warn('[OpenTable] No restaurants in response - API may be blocked or rate-limited')
       return { venues: [], totalCount: 0 }
     }
 
@@ -194,12 +198,13 @@ export async function searchOpenTableVenues(
       })
     )
 
+    console.log(`[OpenTable] Found ${venues.length} venues`)
     return {
       venues,
       totalCount: data.data.restaurantSearch.totalCount || venues.length,
     }
   } catch (error) {
-    console.error('OpenTable search error:', error)
+    console.error('[OpenTable] Search error:', error instanceof Error ? error.message : error)
     return { venues: [], totalCount: 0 }
   }
 }
