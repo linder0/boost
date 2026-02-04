@@ -1,5 +1,5 @@
 import { getEvent } from '@/app/actions/events'
-import { getVendorsByEvent } from '@/app/actions/vendors'
+import { getEntitiesByEvent } from '@/app/actions/entities'
 import { VendorsTableWrapper } from './vendors-table-wrapper'
 import { PAGE_CONTAINER_CLASS } from '@/lib/utils'
 
@@ -8,7 +8,7 @@ export default async function VendorsPage({ params }: { params: Promise<{ id: st
 
   const [event, vendors] = await Promise.all([
     getEvent(id),
-    getVendorsByEvent(id)
+    getEntitiesByEvent(id)
   ])
 
   return (

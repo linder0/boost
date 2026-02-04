@@ -15,8 +15,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { createVendorsFromDiscovery } from '@/app/actions/vendors'
-import { DemoRestaurant, demoRestaurantToVendor, DEMO_RESTAURANTS } from '@/lib/demo/restaurants'
+import { createEntitiesFromDiscovery, DiscoveredEntityInput } from '@/app/actions/entities'
+import { DemoRestaurant, discoveredRestaurantToEntity, DEMO_RESTAURANTS } from '@/lib/demo/restaurants'
 import { DiscoveryLog, LogEntry } from '@/components/discovery-log'
 import { CUISINE_TYPES } from '@/lib/entities'
 import { NeighborhoodPicker } from '@/components/mapbox'
@@ -266,11 +266,11 @@ export function VenueDiscovery({
     setError(null)
 
     try {
-      const restaurantsToCreate = restaurants
+      const restaurantsToCreate: DiscoveredEntityInput[] = restaurants
         .filter((r) => selectedRestaurants.has(r.email))
-        .map(demoRestaurantToVendor)
+        .map(discoveredRestaurantToEntity)
 
-      await createVendorsFromDiscovery(eventId, restaurantsToCreate)
+      await createEntitiesFromDiscovery(eventId, restaurantsToCreate)
       router.push(`/events/${eventId}/vendors`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to add restaurants'

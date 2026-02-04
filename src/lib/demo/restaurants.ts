@@ -3,6 +3,9 @@
  * NYC-focused private dining restaurants
  */
 
+import type { DiscoveredEntityInput } from '@/app/actions/entities'
+import type { DiscoveredRestaurant } from '@/lib/discovery'
+
 export interface DemoRestaurant {
   name: string
   category: 'Restaurant'
@@ -567,39 +570,69 @@ export function findMatchingRestaurants(filter: RestaurantFilter): DemoRestauran
   })
 }
 
+// ============================================================================
+// Conversion Functions
+// ============================================================================
+
 /**
- * Convert demo restaurant to database vendor format
+ * Convert demo restaurant to entity input format
  */
-export function demoRestaurantToVendor(restaurant: DemoRestaurant): {
-  name: string
-  category: string
-  contact_email: string
-  address: string
-  latitude: number
-  longitude: number
-  website?: string
-  phone?: string
-  discovery_source: string
-  cuisine: string
-  has_private_dining: boolean
-  private_dining_capacity_min?: number
-  private_dining_capacity_max?: number
-  private_dining_minimum?: number
-} {
+export function demoRestaurantToEntity(restaurant: DemoRestaurant): DiscoveredEntityInput {
   return {
     name: restaurant.name,
-    category: restaurant.category,
-    contact_email: restaurant.email,
-    address: `${restaurant.neighborhood}, ${restaurant.city}`,
+    tags: ['restaurant', restaurant.cuisine.toLowerCase()],
+    location: `${restaurant.neighborhood}, ${restaurant.city}`,
+    website: restaurant.website,
+    email: restaurant.email,
+    phone: restaurant.phone,
     latitude: restaurant.latitude,
     longitude: restaurant.longitude,
-    website: restaurant.website,
-    phone: restaurant.phone,
-    discovery_source: 'demo',
+    neighborhood: restaurant.neighborhood,
+    city: restaurant.city,
+    discoverySource: 'demo',
     cuisine: restaurant.cuisine,
-    has_private_dining: restaurant.hasPrivateDining,
-    private_dining_capacity_min: restaurant.privateDiningCapacityMin,
-    private_dining_capacity_max: restaurant.privateDiningCapacityMax,
-    private_dining_minimum: restaurant.privateDiningMinimum,
+    priceLevel: restaurant.priceLevel,
+    hasPrivateDining: restaurant.hasPrivateDining,
+    privateDiningCapacityMin: restaurant.privateDiningCapacityMin,
+    privateDiningCapacityMax: restaurant.privateDiningCapacityMax,
+    privateDiningMinimum: restaurant.privateDiningMinimum,
   }
 }
+
+/**
+ * Convert discovered restaurant (from API) to entity input format
+ */
+export function discoveredRestaurantToEntity(restaurant: DiscoveredRestaurant): DiscoveredEntityInput {
+  const tags = ['restaurant']
+  if (restaurant.cuisine) tags.push(restaurant.cuisine.toLowerCase())
+  if (restaurant.hasPrivateDining) tags.push('private_dining')
+
+  return {
+    name: restaurant.name,
+    tags,
+    location: restaurant.address || (restaurant.neighborhood ? `${restaurant.neighborhood}, ${restaurant.city}` : restaurant.city),
+    website: restaurant.website,
+    email: restaurant.email,
+    phone: restaurant.phone,
+    latitude: restaurant.latitude,
+    longitude: restaurant.longitude,
+    neighborhood: restaurant.neighborhood,
+    city: restaurant.city,
+    discoverySource: restaurant.discoverySource,
+    googlePlaceId: restaurant.googlePlaceId,
+    rating: restaurant.rating,
+    emailConfidence: restaurant.emailConfidence,
+    cuisine: restaurant.cuisine,
+    priceLevel: restaurant.priceLevel,
+    hasPrivateDining: restaurant.hasPrivateDining,
+    privateDiningCapacityMin: restaurant.privateDiningCapacityMin,
+    privateDiningCapacityMax: restaurant.privateDiningCapacityMax,
+    privateDiningMinimum: restaurant.privateDiningMinimum,
+    resyVenueId: restaurant.resyVenueId,
+    opentableId: restaurant.opentableId,
+    beliRank: restaurant.beliRank,
+  }
+}
+
+/** @deprecated Use demoRestaurantToEntity instead */
+export const demoRestaurantToVendor = demoRestaurantToEntity

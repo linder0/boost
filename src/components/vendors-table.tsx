@@ -15,19 +15,19 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Badge } from './ui/badge'
 import { Progress } from './ui/progress'
-import { VendorWithThread, VendorStatus, DecisionOutcome } from '@/types/database'
-import { StatusBadge, DecisionBadge } from './status-badge'
+import { EntityWithStatus, EntityStatus } from '@/types/database'
+import { DisplayEntity, toDisplayEntity } from '@/types/entities'
+import { StatusBadge } from './status-badge'
 import { EmptyState } from './empty-state'
 import { VendorNameDisplay, VendorEmailDisplay } from './vendor-display'
-import { updateVendor, regenerateVendorMessage, bulkDeleteVendors } from '@/app/actions/vendors'
-import { normalizeJoinResult } from '@/lib/utils'
+import { bulkRemoveEntitiesFromEvent, updateEventEntityStatus } from '@/app/actions/entities'
 import { Checkbox } from './ui/checkbox'
-import { Mail, CheckCircle2, Loader2, Users, DollarSign, Star, Trash2, X } from 'lucide-react'
+import { Mail, CheckCircle2, Loader2, Users, DollarSign, Trash2, X } from 'lucide-react'
 
 interface VendorsTableProps {
-  vendors: VendorWithThread[]
+  vendors: EntityWithStatus[]
   eventId: string
-  onVendorClick: (vendor: VendorWithThread) => void
+  onVendorClick: (vendor: EntityWithStatus) => void
   // Event info for contextual empty states
   eventName?: string
   city?: string
@@ -46,33 +46,45 @@ interface OutreachSimulation {
   totalCount: number
 }
 
-// Helper to check if restaurant is confirmed (VIABLE or DONE)
-function isConfirmed(vendor: VendorWithThread): boolean {
-  const thread = normalizeJoinResult(vendor.vendor_threads)
-  return thread?.status === 'VIABLE' || thread?.status === 'DONE'
+// Helper to check if entity is confirmed
+function isConfirmed(entity: EntityWithStatus): boolean {
+  const status = entity.event_entity?.status
+  return status === 'confirmed'
 }
 
-// Helper to check if restaurant is rejected
-function isRejected(vendor: VendorWithThread): boolean {
-  const thread = normalizeJoinResult(vendor.vendor_threads)
-  return thread?.status === 'REJECTED'
+// Helper to check if entity is rejected
+function isRejected(entity: EntityWithStatus): boolean {
+  const status = entity.event_entity?.status
+  return status === 'rejected'
 }
 
-// Format private dining capacity
-function formatCapacity(vendor: VendorWithThread): string {
-  const min = vendor.private_dining_capacity_min
-  const max = vendor.private_dining_capacity_max
+// Format private dining capacity from metadata
+function formatCapacity(entity: EntityWithStatus): string {
+  const min = entity.metadata?.private_dining_capacity_min
+  const max = entity.metadata?.private_dining_capacity_max
   if (min && max) return `${min}-${max}`
   if (max) return `Up to ${max}`
   if (min) return `${min}+`
   return '-'
 }
 
-// Format private dining minimum spend
-function formatMinimum(vendor: VendorWithThread): string {
-  const min = vendor.private_dining_minimum
+// Format private dining minimum spend from metadata
+function formatMinimum(entity: EntityWithStatus): string {
+  const min = entity.metadata?.private_dining_minimum
   if (!min) return '-'
   return `$${min.toLocaleString()}`
+}
+
+// Map entity status to display status
+function mapStatusToDisplay(status?: EntityStatus): string {
+  switch (status) {
+    case 'discovered': return 'NOT_CONTACTED'
+    case 'contacted': return 'WAITING'
+    case 'responded': return 'PARSED'
+    case 'confirmed': return 'VIABLE'
+    case 'rejected': return 'REJECTED'
+    default: return 'NOT_CONTACTED'
+  }
 }
 
 export function VendorsTable({
@@ -89,7 +101,6 @@ export function VendorsTable({
   const router = useRouter()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Record<string, string>>({})
-  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
 
   // Outreach simulation state
   const [simulation, setSimulation] = useState<OutreachSimulation>({
@@ -105,10 +116,9 @@ export function VendorsTable({
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Simulate outreach for all not-contacted restaurants
-  const simulateOutreach = useCallback(async (vendorsToProcess: VendorWithThread[]) => {
+  const simulateOutreach = useCallback(async (vendorsToProcess: EntityWithStatus[]) => {
     const notContactedVendors = vendorsToProcess.filter(v => {
-      const thread = normalizeJoinResult(v.vendor_threads)
-      return thread?.status === 'NOT_CONTACTED'
+      return v.event_entity?.status === 'discovered'
     })
 
     if (notContactedVendors.length === 0) return
@@ -136,6 +146,9 @@ export function VendorsTable({
       // Wait a bit to show "sending" state
       await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400))
 
+      // Update status to contacted
+      await updateEventEntityStatus(eventId, vendor.id, 'contacted')
+
       // Mark as processed
       setSimulation(prev => ({
         ...prev,
@@ -156,13 +169,13 @@ export function VendorsTable({
       progress: 0,
       totalCount: 0,
     })
-  }, [])
+  }, [eventId])
 
   // Separate restaurants into confirmed, pipeline, and rejected
   const { confirmed, pipeline, rejected } = useMemo(() => {
-    const confirmed: VendorWithThread[] = []
-    const pipeline: VendorWithThread[] = []
-    const rejected: VendorWithThread[] = []
+    const confirmed: EntityWithStatus[] = []
+    const pipeline: EntityWithStatus[] = []
+    const rejected: EntityWithStatus[] = []
 
     vendors.forEach(vendor => {
       if (isConfirmed(vendor)) {
@@ -179,33 +192,8 @@ export function VendorsTable({
 
   // Count not contacted for outreach button
   const notContactedCount = useMemo(() =>
-    pipeline.filter(v => {
-      const thread = normalizeJoinResult(v.vendor_threads)
-      return thread?.status === 'NOT_CONTACTED'
-    }).length
+    pipeline.filter(v => v.event_entity?.status === 'discovered').length
   , [pipeline])
-
-  const handleRegenerateMessage = async (vendorId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setRegeneratingId(vendorId)
-    try {
-      await regenerateVendorMessage(vendorId)
-    } catch (error) {
-      console.error('Failed to regenerate message:', error)
-    } finally {
-      setRegeneratingId(null)
-    }
-  }
-
-  const handleSaveEdit = async (vendorId: string) => {
-    try {
-      await updateVendor(vendorId, editData)
-      setEditingId(null)
-      setEditData({})
-    } catch (error) {
-      console.error('Failed to update vendor:', error)
-    }
-  }
 
   // Toggle individual vendor selection
   const toggleSelection = (vendorId: string) => {
@@ -221,7 +209,7 @@ export function VendorsTable({
   }
 
   // Toggle all vendors in a list
-  const toggleAllInList = (list: VendorWithThread[]) => {
+  const toggleAllInList = (list: EntityWithStatus[]) => {
     const listIds = list.map(v => v.id)
     const allSelected = listIds.every(id => selectedIds.has(id))
 
@@ -239,7 +227,7 @@ export function VendorsTable({
   }
 
   // Check selection state for a list
-  const getListSelectionState = (list: VendorWithThread[]) => {
+  const getListSelectionState = (list: EntityWithStatus[]) => {
     const listIds = list.map(v => v.id)
     const selectedCount = listIds.filter(id => selectedIds.has(id)).length
     return {
@@ -255,7 +243,7 @@ export function VendorsTable({
 
     setIsDeleting(true)
     try {
-      await bulkDeleteVendors(Array.from(selectedIds), eventId)
+      await bulkRemoveEntitiesFromEvent(eventId, Array.from(selectedIds))
       setSelectedIds(new Set())
     } catch (error) {
       console.error('Failed to delete vendors:', error)
@@ -269,14 +257,22 @@ export function VendorsTable({
     setSelectedIds(new Set())
   }
 
-  const renderRestaurantRow = (vendor: VendorWithThread) => {
-    const thread = normalizeJoinResult(vendor.vendor_threads)
+  const renderRestaurantRow = (vendor: EntityWithStatus) => {
     const isEditing = editingId === vendor.id
     const isSelected = selectedIds.has(vendor.id)
+    const status = vendor.event_entity?.status
 
     // Simulation state for this vendor
     const isSending = simulation.currentVendorId === vendor.id
     const wasSent = simulation.processedVendorIds.has(vendor.id)
+
+    // Get display values from metadata
+    const email = vendor.metadata?.email || ''
+    const emailConfidence = vendor.metadata?.email_confidence
+    const rating = vendor.metadata?.rating
+    const website = vendor.website
+    const discoverySource = vendor.metadata?.discovery_source
+    const cuisine = vendor.metadata?.cuisine
 
     return (
       <TableRow
@@ -307,13 +303,13 @@ export function VendorsTable({
             <div className="space-y-1">
               <VendorNameDisplay
                 name={vendor.name}
-                rating={vendor.rating}
-                website={vendor.website}
-                discoverySource={vendor.discovery_source}
+                rating={rating}
+                website={website}
+                discoverySource={discoverySource}
                 showDiscoveryBadge
               />
-              {vendor.cuisine && (
-                <span className="text-xs text-muted-foreground">{vendor.cuisine}</span>
+              {cuisine && (
+                <span className="text-xs text-muted-foreground">{cuisine}</span>
               )}
             </div>
           )}
@@ -333,16 +329,16 @@ export function VendorsTable({
         <TableCell>
           {isEditing ? (
             <Input
-              value={editData.contact_email ?? vendor.contact_email}
+              value={editData.email ?? email}
               onChange={(e) =>
-                setEditData({ ...editData, contact_email: e.target.value })
+                setEditData({ ...editData, email: e.target.value })
               }
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
             <VendorEmailDisplay
-              email={vendor.contact_email}
-              emailConfidence={vendor.email_confidence}
+              email={email}
+              emailConfidence={emailConfidence}
             />
           )}
         </TableCell>
@@ -357,18 +353,22 @@ export function VendorsTable({
               <CheckCircle2 className="w-3 h-3 mr-1" />
               Sent
             </Badge>
-          ) : thread ? (
-            <StatusBadge status={thread.status as VendorStatus} />
+          ) : status ? (
+            <StatusBadge status={mapStatusToDisplay(status)} />
           ) : null}
         </TableCell>
         <TableCell>
-          {thread?.decision && (
-            <DecisionBadge decision={thread.decision as DecisionOutcome} />
+          {/* Decision column - placeholder for future thread integration */}
+          {status === 'confirmed' && (
+            <Badge variant="default" className="bg-green-600">Confirmed</Badge>
+          )}
+          {status === 'rejected' && (
+            <Badge variant="destructive">Rejected</Badge>
           )}
         </TableCell>
         <TableCell className="text-right">
-          {thread?.last_touch
-            ? formatDistanceToNow(new Date(thread.last_touch), {
+          {vendor.updated_at
+            ? formatDistanceToNow(new Date(vendor.updated_at), {
                 addSuffix: true,
               })
             : '-'}
@@ -377,7 +377,7 @@ export function VendorsTable({
     )
   }
 
-  const renderTable = (restaurantList: VendorWithThread[], showActions: boolean = true) => {
+  const renderTable = (restaurantList: EntityWithStatus[], showActions: boolean = true) => {
     const { allSelected, someSelected } = getListSelectionState(restaurantList)
 
     return (
@@ -577,7 +577,6 @@ export function VendorsTable({
                 </TableHeader>
                 <TableBody>
                   {rejected.map(vendor => {
-                    const thread = normalizeJoinResult(vendor.vendor_threads)
                     const isSelected = selectedIds.has(vendor.id)
                     return (
                       <TableRow
@@ -592,8 +591,8 @@ export function VendorsTable({
                           />
                         </TableCell>
                         <TableCell className="font-medium">{vendor.name}</TableCell>
-                        <TableCell>{vendor.contact_email}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{thread?.reason || '-'}</TableCell>
+                        <TableCell>{vendor.metadata?.email || '-'}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{vendor.event_entity?.notes || '-'}</TableCell>
                       </TableRow>
                     )
                   })}

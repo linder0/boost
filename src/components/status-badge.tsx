@@ -1,39 +1,58 @@
 import { Badge } from './ui/badge'
-import { VendorStatus, DecisionOutcome, ConfidenceLevel } from '@/types/database'
 
-export function StatusBadge({ status }: { status: VendorStatus }) {
+// Status badge that works with both old VendorStatus and new EntityStatus
+export function StatusBadge({ status }: { status: string }) {
+  const upperStatus = status.toUpperCase()
+
   const variant =
-    status === 'DONE' || status === 'VIABLE'
+    upperStatus === 'DONE' || upperStatus === 'VIABLE' || upperStatus === 'CONFIRMED'
       ? 'default'
-      : status === 'WAITING'
+      : upperStatus === 'WAITING' || upperStatus === 'CONTACTED'
       ? 'secondary'
-      : status === 'ESCALATION'
+      : upperStatus === 'ESCALATION'
       ? 'destructive'
-      : status === 'REJECTED'
+      : upperStatus === 'REJECTED'
       ? 'outline'
       : 'secondary'
 
-  return <Badge variant={variant}>{status.replace('_', ' ')}</Badge>
+  // Display label mapping
+  const displayLabel =
+    upperStatus === 'NOT_CONTACTED' || upperStatus === 'DISCOVERED' ? 'Not Contacted' :
+    upperStatus === 'WAITING' || upperStatus === 'CONTACTED' ? 'Waiting' :
+    upperStatus === 'PARSED' || upperStatus === 'RESPONDED' ? 'Responded' :
+    upperStatus === 'ESCALATION' ? 'Escalation' :
+    upperStatus === 'VIABLE' || upperStatus === 'CONFIRMED' ? 'Confirmed' :
+    upperStatus === 'REJECTED' ? 'Rejected' :
+    upperStatus === 'DONE' ? 'Done' :
+    status.replace(/_/g, ' ')
+
+  return <Badge variant={variant}>{displayLabel}</Badge>
 }
 
-export function DecisionBadge({ decision }: { decision: DecisionOutcome }) {
+// Decision badge for legacy thread decisions
+export function DecisionBadge({ decision }: { decision: string }) {
+  const upperDecision = decision.toUpperCase()
+
   const variant =
-    decision === 'VIABLE'
+    upperDecision === 'VIABLE'
       ? 'default'
-      : decision === 'NEGOTIATE'
+      : upperDecision === 'NEGOTIATE'
       ? 'secondary'
-      : decision === 'REJECT'
+      : upperDecision === 'REJECT'
       ? 'destructive'
       : 'outline'
 
   return <Badge variant={variant}>{decision}</Badge>
 }
 
-export function ConfidenceBadge({ confidence }: { confidence: ConfidenceLevel }) {
+// Confidence badge for parsing confidence
+export function ConfidenceBadge({ confidence }: { confidence: string }) {
+  const upperConfidence = confidence.toUpperCase()
+
   const variant =
-    confidence === 'HIGH'
+    upperConfidence === 'HIGH'
       ? 'default'
-      : confidence === 'MEDIUM'
+      : upperConfidence === 'MEDIUM'
       ? 'secondary'
       : 'destructive'
 

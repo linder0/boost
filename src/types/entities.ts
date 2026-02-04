@@ -1,126 +1,89 @@
 /**
- * Unified Entity Types
- * VROOM Select: Restaurant-focused type definitions
+ * Entity Types for VRM (Vendor Relationship Manager)
+ * Universal entity system with tag-based categorization
  */
 
-import { EntityCategory, CuisineType, NYCNeighborhood } from '@/lib/entities'
+import { Entity, EntityMetadata, DiscoverySource, EntityStatus } from './database'
 
 // ============================================================================
-// Base Types
-// ============================================================================
-
-/**
- * Discovery source for restaurants
- */
-export type DiscoverySource = 'google_places' | 'resy' | 'opentable' | 'beli' | 'manual' | 'csv' | 'demo'
-
-/**
- * Private dining capacity range
- */
-export interface PrivateDiningCapacity {
-  min: number
-  max: number
-}
-
-// ============================================================================
-// Restaurant Entity
+// Tag Constants
 // ============================================================================
 
 /**
- * Restaurant entity with all discovery and dining information
+ * Common entity tags
  */
-export interface RestaurantEntity {
-  name: string
-  category: EntityCategory
-  contactEmail: string
-  address?: string
-  city?: string
-  neighborhood?: NYCNeighborhood | string
-  latitude?: number
-  longitude?: number
+export const ENTITY_TAGS = {
+  // Type tags
+  VENUE: 'venue',
+  RESTAURANT: 'restaurant',
+  VENDOR: 'vendor',
+  FUNDER: 'funder',
+  HOST: 'host',
+  PERSON: 'person',
 
-  // Discovery metadata
-  discoverySource?: DiscoverySource
-  website?: string
-  phone?: string
-  rating?: number
-  googlePlaceId?: string
-  emailConfidence?: number
+  // Feature tags
+  PRIVATE_DINING: 'private_dining',
+  CATERING: 'catering',
+  BAR: 'bar',
+  OUTDOOR: 'outdoor',
 
-  // Restaurant-specific fields
-  cuisine?: CuisineType | string
-  priceLevel?: number // 1-4 ($-$$$$)
+  // Status tags
+  VERIFIED: 'verified',
+  PREMIUM: 'premium',
+} as const
 
-  // Private dining
-  hasPrivateDining?: boolean
-  privateDiningCapacity?: PrivateDiningCapacity
-  privateDiningMinimum?: number // Minimum spend
+export type EntityTag = typeof ENTITY_TAGS[keyof typeof ENTITY_TAGS] | string
 
-  // External platform IDs
-  resyVenueId?: string
-  opentableId?: string
-  beliRank?: number
-}
+// ============================================================================
+// Display Entity
+// ============================================================================
 
 /**
- * Entity for display in tables/lists
+ * Entity formatted for display in tables/lists
+ * Flattens metadata fields for easy access
  */
 export interface DisplayEntity {
   id?: string
   name: string
-  category: EntityCategory
-  contactEmail: string
-  address?: string
-  city?: string
-  neighborhood?: string
+  tags: string[]
+  location?: string
+  description?: string
+  website?: string
+  popularity?: number
+
+  // Flattened from metadata for convenience
+  email?: string
+  phone?: string
   latitude?: number
   longitude?: number
+  neighborhood?: string
+  city?: string
+
+  // Discovery
   discoverySource?: DiscoverySource
-  website?: string
+  googlePlaceId?: string
   rating?: number
+  reviewCount?: number
   emailConfidence?: number
-  pricePerPersonMin?: number
-  pricePerPersonMax?: number
-  capacityMin?: number
-  capacityMax?: number
+
   // Restaurant-specific
   cuisine?: string
   priceLevel?: number
   hasPrivateDining?: boolean
-  privateDiningCapacity?: PrivateDiningCapacity
+  privateDiningCapacityMin?: number
+  privateDiningCapacityMax?: number
   privateDiningMinimum?: number
+
+  // External IDs
   resyVenueId?: string
   opentableId?: string
   beliRank?: number
-  // Status fields (when linked to database)
-  status?: string
+
+  // Event-specific (when linked)
+  status?: EntityStatus
+  notes?: string
+  outreachApproved?: boolean
   isAlreadyAdded?: boolean
-}
-
-// ============================================================================
-// Type Guards
-// ============================================================================
-
-/**
- * Check if an entity has private dining
- */
-export function hasPrivateDining(entity: RestaurantEntity | DisplayEntity): boolean {
-  return entity.hasPrivateDining === true ||
-    (entity.privateDiningCapacity !== undefined && entity.privateDiningCapacity.max > 0)
-}
-
-/**
- * Check if an entity has discovery metadata
- */
-export function hasDiscoveryMetadata(entity: RestaurantEntity | DisplayEntity): boolean {
-  return entity.discoverySource !== undefined && entity.googlePlaceId !== undefined
-}
-
-/**
- * Check if entity is from a specific source
- */
-export function isFromSource(entity: RestaurantEntity | DisplayEntity, source: DiscoverySource): boolean {
-  return entity.discoverySource === source
 }
 
 // ============================================================================
@@ -128,100 +91,156 @@ export function isFromSource(entity: RestaurantEntity | DisplayEntity, source: D
 // ============================================================================
 
 /**
- * Convert entity to database vendor format
+ * Convert database Entity to DisplayEntity
  */
-export function entityToVendor(entity: DisplayEntity): {
-  name: string
-  category: string
-  contact_email: string
-  address?: string
-  latitude?: number
-  longitude?: number
-  cuisine?: string
-  has_private_dining?: boolean
-  private_dining_capacity_min?: number
-  private_dining_capacity_max?: number
-  private_dining_minimum?: number
-  resy_venue_id?: string
-  opentable_id?: string
-  beli_rank?: number
-} {
+export function toDisplayEntity(entity: Entity & { event_entity?: { status: EntityStatus; notes?: string; outreach_approved?: boolean } }): DisplayEntity {
+  const m = entity.metadata || {}
+
   return {
+    id: entity.id,
     name: entity.name,
-    category: entity.category,
-    contact_email: entity.contactEmail,
-    address: entity.neighborhood
-      ? `${entity.neighborhood}, ${entity.city || 'New York'}`.trim()
-      : entity.city || entity.address,
-    latitude: entity.latitude,
-    longitude: entity.longitude,
-    cuisine: entity.cuisine,
-    has_private_dining: entity.hasPrivateDining,
-    private_dining_capacity_min: entity.privateDiningCapacity?.min,
-    private_dining_capacity_max: entity.privateDiningCapacity?.max,
-    private_dining_minimum: entity.privateDiningMinimum,
-    resy_venue_id: entity.resyVenueId,
-    opentable_id: entity.opentableId,
-    beli_rank: entity.beliRank,
+    tags: entity.tags || [],
+    location: entity.location || undefined,
+    description: entity.description || undefined,
+    website: entity.website || undefined,
+    popularity: entity.popularity || undefined,
+
+    // Flatten metadata
+    email: m.email,
+    phone: m.phone,
+    latitude: m.latitude,
+    longitude: m.longitude,
+    neighborhood: m.neighborhood,
+    city: m.city,
+
+    discoverySource: m.discovery_source,
+    googlePlaceId: m.google_place_id,
+    rating: m.rating,
+    reviewCount: m.review_count,
+    emailConfidence: m.email_confidence,
+
+    cuisine: m.cuisine,
+    priceLevel: m.price_level,
+    hasPrivateDining: m.has_private_dining,
+    privateDiningCapacityMin: m.private_dining_capacity_min,
+    privateDiningCapacityMax: m.private_dining_capacity_max,
+    privateDiningMinimum: m.private_dining_minimum,
+
+    resyVenueId: m.resy_venue_id,
+    opentableId: m.opentable_id,
+    beliRank: m.beli_rank,
+
+    // Event-specific
+    status: entity.event_entity?.status,
+    notes: entity.event_entity?.notes || undefined,
+    outreachApproved: entity.event_entity?.outreach_approved,
   }
 }
 
 /**
- * Convert discovered restaurant to display entity format
+ * Convert DisplayEntity to database Entity format
  */
-export function toDisplayEntity(restaurant: {
-  name: string
-  category?: string
-  email?: string
-  contactEmail?: string
-  city?: string
-  neighborhood?: string
-  latitude?: number
-  longitude?: number
-  discoverySource?: string
-  website?: string
-  rating?: number
-  emailConfidence?: number
-  pricePerPersonMin?: number
-  pricePerPersonMax?: number
-  capacityMin?: number
-  capacityMax?: number
-  googlePlaceId?: string
-  cuisine?: string
-  priceLevel?: number
-  hasPrivateDining?: boolean
-  privateDiningCapacity?: PrivateDiningCapacity
-  privateDiningMinimum?: number
-  resyVenueId?: string
-  opentableId?: string
-  beliRank?: number
-}): DisplayEntity {
+export function toEntity(display: DisplayEntity): Omit<Entity, 'id' | 'created_at' | 'updated_at'> {
+  const metadata: EntityMetadata = {}
+
+  // Contact
+  if (display.email) metadata.email = display.email
+  if (display.phone) metadata.phone = display.phone
+
+  // Location
+  if (display.latitude) metadata.latitude = display.latitude
+  if (display.longitude) metadata.longitude = display.longitude
+  if (display.neighborhood) metadata.neighborhood = display.neighborhood
+  if (display.city) metadata.city = display.city
+
+  // Discovery
+  if (display.discoverySource) metadata.discovery_source = display.discoverySource
+  if (display.googlePlaceId) metadata.google_place_id = display.googlePlaceId
+  if (display.rating) metadata.rating = display.rating
+  if (display.reviewCount) metadata.review_count = display.reviewCount
+  if (display.emailConfidence) metadata.email_confidence = display.emailConfidence
+
+  // Restaurant
+  if (display.cuisine) metadata.cuisine = display.cuisine
+  if (display.priceLevel) metadata.price_level = display.priceLevel
+  if (display.hasPrivateDining !== undefined) metadata.has_private_dining = display.hasPrivateDining
+  if (display.privateDiningCapacityMin) metadata.private_dining_capacity_min = display.privateDiningCapacityMin
+  if (display.privateDiningCapacityMax) metadata.private_dining_capacity_max = display.privateDiningCapacityMax
+  if (display.privateDiningMinimum) metadata.private_dining_minimum = display.privateDiningMinimum
+
+  // External IDs
+  if (display.resyVenueId) metadata.resy_venue_id = display.resyVenueId
+  if (display.opentableId) metadata.opentable_id = display.opentableId
+  if (display.beliRank) metadata.beli_rank = display.beliRank
+
   return {
-    name: restaurant.name,
-    category: (restaurant.category as EntityCategory) || 'Restaurant',
-    contactEmail: restaurant.contactEmail || restaurant.email || '',
-    address: restaurant.neighborhood
-      ? `${restaurant.neighborhood}, ${restaurant.city || 'New York'}`
-      : restaurant.city,
-    city: restaurant.city || 'New York',
-    neighborhood: restaurant.neighborhood,
-    latitude: restaurant.latitude,
-    longitude: restaurant.longitude,
-    discoverySource: restaurant.discoverySource as DiscoverySource,
-    website: restaurant.website,
-    rating: restaurant.rating,
-    emailConfidence: restaurant.emailConfidence,
-    pricePerPersonMin: restaurant.pricePerPersonMin,
-    pricePerPersonMax: restaurant.pricePerPersonMax,
-    capacityMin: restaurant.capacityMin,
-    capacityMax: restaurant.capacityMax,
-    cuisine: restaurant.cuisine,
-    priceLevel: restaurant.priceLevel,
-    hasPrivateDining: restaurant.hasPrivateDining,
-    privateDiningCapacity: restaurant.privateDiningCapacity,
-    privateDiningMinimum: restaurant.privateDiningMinimum,
-    resyVenueId: restaurant.resyVenueId,
-    opentableId: restaurant.opentableId,
-    beliRank: restaurant.beliRank,
+    name: display.name,
+    tags: display.tags,
+    location: display.location || null,
+    description: display.description || null,
+    website: display.website || null,
+    popularity: display.popularity || null,
+    metadata,
   }
+}
+
+/**
+ * Calculate popularity score from rating and review count
+ */
+export function calculatePopularity(rating?: number, reviewCount?: number): number {
+  if (!rating) return 0
+  const reviews = Math.max(1, reviewCount || 1)
+  return rating * Math.log(reviews)
+}
+
+// ============================================================================
+// Type Guards
+// ============================================================================
+
+/**
+ * Check if entity has a specific tag
+ */
+export function hasTag(entity: DisplayEntity | Entity, tag: string): boolean {
+  const tags = 'tags' in entity ? entity.tags : []
+  return tags.includes(tag)
+}
+
+/**
+ * Check if entity is a restaurant
+ */
+export function isRestaurant(entity: DisplayEntity | Entity): boolean {
+  return hasTag(entity, ENTITY_TAGS.RESTAURANT)
+}
+
+/**
+ * Check if entity is a venue
+ */
+export function isVenue(entity: DisplayEntity | Entity): boolean {
+  return hasTag(entity, ENTITY_TAGS.VENUE)
+}
+
+/**
+ * Check if entity has private dining
+ */
+export function hasPrivateDining(entity: DisplayEntity): boolean {
+  return entity.hasPrivateDining === true ||
+    (entity.privateDiningCapacityMax !== undefined && entity.privateDiningCapacityMax > 0)
+}
+
+// ============================================================================
+// Legacy exports (for gradual migration)
+// ============================================================================
+
+/** @deprecated Use DisplayEntity instead */
+export type RestaurantEntity = DisplayEntity
+
+/** @deprecated Use EntityMetadata instead */
+export interface PrivateDiningCapacity {
+  min: number
+  max: number
+}
+
+/** @deprecated Use toEntity instead */
+export function entityToVendor(entity: DisplayEntity): Record<string, unknown> {
+  return toEntity(entity) as unknown as Record<string, unknown>
 }

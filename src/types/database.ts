@@ -1,207 +1,172 @@
-// Database types and enums
-export type VendorStatus =
-  | 'NOT_CONTACTED'
-  | 'WAITING'
-  | 'PARSED'
-  | 'ESCALATION'
-  | 'DONE'
-  | 'VIABLE'
-  | 'REJECTED';
+// Database types for VRM (Vendor Relationship Manager)
+// Simplified schema with universal entities table
 
-export type DecisionOutcome =
-  | 'VIABLE'
-  | 'NEGOTIATE'
-  | 'REJECT'
-  | 'ESCALATE';
+// ============================================================================
+// Enums
+// ============================================================================
 
-export type ConfidenceLevel =
-  | 'HIGH'
-  | 'MEDIUM'
-  | 'LOW';
+export type EntityStatus =
+  | 'discovered'
+  | 'contacted'
+  | 'responded'
+  | 'confirmed'
+  | 'rejected';
 
-export type NextActionType =
-  | 'AUTO'
-  | 'WAITING'
-  | 'NEEDS_YOU';
-
-export type MessageSender =
-  | 'SYSTEM'
-  | 'VENDOR'
-  | 'HUMAN';
-
-export type LogEventType =
-  | 'OUTREACH'
-  | 'FOLLOW_UP'
-  | 'REPLY'
-  | 'PARSE'
-  | 'DECISION'
-  | 'ESCALATION'
-  | 'DISCOVERY'
-  | 'APPROVAL'
-  | 'HUMAN_RESPONSE';
-
-export type EscalationCategory =
-  | 'low_confidence'
-  | 'vendor_questions'
-  | 'missing_info'
-  | 'budget_edge'
-  | 'custom';
+export type ActivityAction =
+  | 'discovered'
+  | 'added_to_event'
+  | 'contacted'
+  | 'received_response'
+  | 'status_changed'
+  | 'note_added';
 
 export type ChatRole =
   | 'user'
   | 'assistant';
 
-// Database table types
+export type DiscoverySource =
+  | 'google_places'
+  | 'resy'
+  | 'opentable'
+  | 'beli'
+  | 'exa'
+  | 'clawdbot'
+  | 'manual'
+  | 'csv'
+  | 'demo';
+
+// ============================================================================
+// Entity Metadata (stored in JSONB)
+// ============================================================================
+
+export interface EntityMetadata {
+  // Contact
+  email?: string;
+  phone?: string;
+
+  // Location details
+  latitude?: number;
+  longitude?: number;
+  neighborhood?: string;
+  city?: string;
+
+  // Discovery
+  discovery_source?: DiscoverySource;
+  google_place_id?: string;
+  rating?: number;
+  review_count?: number;
+  email_confidence?: number;
+
+  // Restaurant-specific
+  cuisine?: string;
+  price_level?: number;
+  has_private_dining?: boolean;
+  private_dining_capacity_min?: number;
+  private_dining_capacity_max?: number;
+  private_dining_minimum?: number;
+
+  // External platform IDs
+  resy_venue_id?: string;
+  opentable_id?: string;
+  beli_rank?: number;
+
+  // Extensible - any other fields
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// Core Tables
+// ============================================================================
+
+/**
+ * Universal entity in the VRM
+ * Can be a venue, restaurant, vendor, funder, host, person, etc.
+ */
+export interface Entity {
+  id: string;
+  name: string;
+  tags: string[];
+  location: string | null;
+  description: string | null;
+  website: string | null;
+  popularity: number | null;
+  metadata: EntityMetadata;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Event - a planned occasion linking entities
+ */
 export interface Event {
   id: string;
   user_id: string;
   name: string;
   city: string;
+  description?: string | null;
   preferred_dates: { date: string; rank: number }[];
   headcount: number;
   total_budget: number;
   venue_budget_ceiling: number;
   date_flexibility_days: number;
   budget_flexibility_percent: number;
-  constraints: {
-    ada?: boolean;
-    alcohol?: boolean;
-    noise?: boolean;
-    indoor_outdoor?: 'indoor' | 'outdoor' | 'either';
-    neighborhood?: string;
-    neighborhoods?: string[];
-    cuisines?: string[];
-    requires_private_dining?: boolean;
-    dietary_restrictions?: string;
-    time_frame?: 'morning' | 'afternoon' | 'evening' | 'night';
-    venue_types?: string[];
-    catering?: {
-      food?: boolean;
-      drinks?: boolean;
-      external_vendors_allowed?: boolean;
-    };
-  };
+  constraints: EventConstraints;
   location_address?: string | null;
   location_lat?: number | null;
   location_lng?: number | null;
+  chat_history?: ChatMessage[];
   created_at: string;
   updated_at: string;
 }
 
-export type DiscoverySourceType = 'google_places' | 'resy' | 'opentable' | 'beli' | 'manual' | 'csv' | 'demo';
+export interface EventConstraints {
+  ada?: boolean;
+  alcohol?: boolean;
+  noise?: boolean;
+  indoor_outdoor?: 'indoor' | 'outdoor' | 'either';
+  neighborhood?: string;
+  neighborhoods?: string[];
+  cuisines?: string[];
+  requires_private_dining?: boolean;
+  dietary_restrictions?: string;
+  time_frame?: 'morning' | 'afternoon' | 'evening' | 'night';
+  venue_types?: string[];
+  catering?: {
+    food?: boolean;
+    drinks?: boolean;
+    external_vendors_allowed?: boolean;
+  };
+}
 
-export interface Vendor {
+/**
+ * Junction table linking entities to events
+ */
+export interface EventEntity {
   id: string;
   event_id: string;
-  name: string;
-  category: string;
-  contact_email: string;
-  address?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  custom_message?: string | null;
-  // Discovery metadata fields
-  website?: string | null;
-  rating?: number | null;
-  email_confidence?: number | null;
-  google_place_id?: string | null;
-  phone?: string | null;
-  discovery_source?: DiscoverySourceType | null;
-  // Restaurant-specific fields
-  cuisine?: string | null;
-  private_dining_capacity_min?: number | null;
-  private_dining_capacity_max?: number | null;
-  private_dining_minimum?: number | null;
-  resy_venue_id?: string | null;
-  opentable_id?: string | null;
-  beli_rank?: number | null;
-  has_private_dining?: boolean | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AutomationStep {
-  type: LogEventType;
-  timestamp: string;
-  details: Record<string, unknown>;
-}
-
-export interface VendorThread {
-  id: string;
-  vendor_id: string;
-  status: VendorStatus;
-  decision: DecisionOutcome | null;
-  confidence: ConfidenceLevel | null;
-  next_action: NextActionType;
-  reason: string | null;
-  last_touch: string | null;
-  escalation_reason: string | null;
-  escalation_category: EscalationCategory | null;
-  follow_up_count: number;
-  gmail_thread_id: string | null;
-  // Approval workflow fields
+  entity_id: string;
+  status: EntityStatus;
+  notes: string | null;
   outreach_approved: boolean;
-  outreach_approved_at: string | null;
-  outreach_approved_by: string | null;
-  // Automation history
-  automation_history: AutomationStep[];
   created_at: string;
   updated_at: string;
 }
 
-export interface Message {
+/**
+ * Activity log for audit trail
+ */
+export interface ActivityLog {
   id: string;
-  thread_id: string;
-  sender: MessageSender;
-  body: string;
-  gmail_message_id: string | null;
-  inbound: boolean;
+  entity_id: string | null;
+  event_id: string | null;
+  action: ActivityAction;
+  details: Record<string, unknown>;
   created_at: string;
 }
 
-export interface ParsedResponse {
-  id: string;
-  message_id: string;
-  availability: { date: string; time: string; capacity: number }[] | null;
-  quote: {
-    amount: number;
-    currency: string;
-    breakdown: { item: string; amount: number }[];
-  } | null;
-  inclusions: string[];
-  questions: string[];
-  sentiment: string | null;
-  confidence: ConfidenceLevel;
-  raw_data: any;
-  created_at: string;
-}
-
-export interface SuggestedAction {
-  label: string;
-  type: 'reply' | 'approve' | 'reject' | 'negotiate';
-  draftMessage?: string;
-  confidence: number;
-}
-
-export interface Decision {
-  id: string;
-  parsed_response_id: string;
-  outcome: DecisionOutcome;
-  reason: string;
-  proposed_next_action: string | null;
-  suggested_actions: SuggestedAction[];
-  created_at: string;
-}
-
-export interface AutomationLog {
-  id: string;
-  event_id: string;
-  vendor_id: string | null;
-  event_type: LogEventType;
-  details: any;
-  created_at: string;
-}
-
+/**
+ * Gmail OAuth tokens
+ */
 export interface GmailToken {
   id: string;
   user_id: string;
@@ -212,27 +177,42 @@ export interface GmailToken {
   updated_at: string;
 }
 
+/**
+ * Chat message (stored in events.chat_history JSONB)
+ */
 export interface ChatMessage {
-  id: string;
-  event_id: string;
   role: ChatRole;
   content: string;
   created_at: string;
 }
 
-// Joined types for UI
-export interface VendorWithThread extends Vendor {
-  vendor_threads?: VendorThread;
+// ============================================================================
+// Joined/View Types
+// ============================================================================
+
+/**
+ * Entity with its event-specific status
+ */
+export interface EntityWithStatus extends Entity {
+  event_entity?: EventEntity;
 }
 
-export interface MessageWithParsed extends Message {
-  parsed_responses?: ParsedResponse;
+/**
+ * Event with its linked entities
+ */
+export interface EventWithEntities extends Event {
+  entities?: EntityWithStatus[];
 }
 
-export interface ThreadWithMessages extends VendorThread {
-  messages: MessageWithParsed[];
-}
+// ============================================================================
+// Legacy type aliases (for gradual migration)
+// ============================================================================
 
-export interface VendorDetail extends Vendor {
-  vendor_threads: ThreadWithMessages;
-}
+/** @deprecated Use Entity instead */
+export type Vendor = Entity;
+
+/** @deprecated Use EntityWithStatus instead */
+export type VendorWithThread = EntityWithStatus;
+
+/** @deprecated Use DiscoverySource instead */
+export type DiscoverySourceType = DiscoverySource;

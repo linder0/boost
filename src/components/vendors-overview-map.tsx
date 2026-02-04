@@ -3,23 +3,23 @@
 import { useMemo } from 'react'
 import { MapboxMap, MapMarker } from './mapbox'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { VendorWithThread } from '@/types/database'
+import { EntityWithStatus } from '@/types/database'
 
 interface VendorsOverviewMapProps {
-  vendors: VendorWithThread[]
-  onVendorClick?: (vendor: VendorWithThread) => void
+  vendors: EntityWithStatus[]
+  onVendorClick?: (vendor: EntityWithStatus) => void
   eventLocation?: { lat: number; lng: number } | null
 }
 
-export function VendorsOverviewMap({ 
-  vendors, 
+export function VendorsOverviewMap({
+  vendors,
   onVendorClick,
-  eventLocation 
+  eventLocation
 }: VendorsOverviewMapProps) {
-  // Filter vendors with valid coordinates
+  // Filter vendors with valid coordinates (from metadata)
   const vendorsWithLocation = useMemo(() => {
     return vendors.filter(
-      (v) => v.latitude != null && v.longitude != null
+      (v) => v.metadata?.latitude != null && v.metadata?.longitude != null
     )
   }, [vendors])
 
@@ -27,8 +27,8 @@ export function VendorsOverviewMap({
   const markers: MapMarker[] = useMemo(() => {
     return vendorsWithLocation.map((v) => ({
       id: v.id,
-      lat: v.latitude!,
-      lng: v.longitude!,
+      lat: v.metadata!.latitude!,
+      lng: v.metadata!.longitude!,
       label: v.name,
       color: '#3b82f6', // Blue for vendors
     }))
@@ -41,8 +41,8 @@ export function VendorsOverviewMap({
     }
     if (vendorsWithLocation.length > 0) {
       // Calculate centroid of all vendor locations
-      const sumLat = vendorsWithLocation.reduce((sum, v) => sum + v.latitude!, 0)
-      const sumLng = vendorsWithLocation.reduce((sum, v) => sum + v.longitude!, 0)
+      const sumLat = vendorsWithLocation.reduce((sum, v) => sum + v.metadata!.latitude!, 0)
+      const sumLng = vendorsWithLocation.reduce((sum, v) => sum + v.metadata!.longitude!, 0)
       return {
         lat: sumLat / vendorsWithLocation.length,
         lng: sumLng / vendorsWithLocation.length,
@@ -66,7 +66,7 @@ export function VendorsOverviewMap({
     <Card className="mb-6">
       <CardHeader className="pb-2">
         <CardTitle className="text-lg">
-          Vendor Locations ({vendorsWithLocation.length} of {vendors.length})
+          Venue Locations ({vendorsWithLocation.length} of {vendors.length})
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -79,7 +79,7 @@ export function VendorsOverviewMap({
           className="rounded-md"
         />
         <p className="mt-2 text-xs text-muted-foreground">
-          Click on a marker to view vendor details
+          Click on a marker to view venue details
         </p>
       </CardContent>
     </Card>
