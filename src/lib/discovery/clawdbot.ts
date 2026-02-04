@@ -94,7 +94,7 @@ export async function scheduleDiscoveryTask(
 ): Promise<ClawdbotTask> {
   if (!CLAWDBOT_API_KEY) {
     console.warn('CLAWDBOT_API_KEY not set, returning mock task')
-    return createMockTask(type, params)
+    return createMockTask(type, params as Record<string, unknown>)
   }
 
   try {
@@ -118,7 +118,7 @@ export async function scheduleDiscoveryTask(
     return await response.json()
   } catch (error) {
     console.error('Clawdbot task scheduling error:', error)
-    return createMockTask(type, params, 'failed', String(error))
+    return createMockTask(type, params as Record<string, unknown>, 'failed', String(error))
   }
 }
 

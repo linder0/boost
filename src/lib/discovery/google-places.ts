@@ -10,6 +10,21 @@ import {
 } from '@/lib/entities'
 import { mapPriceLevel, normalizeName } from './utils'
 
+// Generic names that aren't real restaurants - filter these out
+const GENERIC_NAME_PATTERNS = [
+  /^private dining$/i,
+  /^private room$/i,
+  /^event space$/i,
+  /^banquet hall$/i,
+  /^catering service$/i,
+  /^restaurant$/i,
+  /^dining room$/i,
+]
+
+function isGenericName(name: string): boolean {
+  return GENERIC_NAME_PATTERNS.some(pattern => pattern.test(name.trim()))
+}
+
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY
 
 export interface GooglePlaceVenue {
@@ -109,6 +124,11 @@ export async function searchVenues(
   // Flatten and deduplicate results by ID, name, and website
   for (const { places, category, searchType } of results) {
     for (const place of places) {
+      // Filter out generic names that aren't real restaurants
+      if (isGenericName(place.displayName.text)) {
+        continue
+      }
+
       const normalizedName = normalizeName(place.displayName.text)
       const normalizedWebsite = place.websiteUri
         ? place.websiteUri.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')

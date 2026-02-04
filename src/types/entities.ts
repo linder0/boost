@@ -3,7 +3,10 @@
  * Universal entity system with tag-based categorization
  */
 
-import { Entity, EntityMetadata, DiscoverySource, EntityStatus } from './database'
+import { Entity, EntityMetadata, DiscoverySource } from './database'
+
+// Simple status type for display purposes
+export type EntityStatus = 'discovered' | 'contacted' | 'responded' | 'confirmed' | 'rejected'
 
 // ============================================================================
 // Tag Constants
@@ -46,18 +49,22 @@ export interface DisplayEntity {
   id?: string
   name: string
   tags: string[]
-  location?: string
+
+  // Location (now direct columns)
+  address?: string
+  neighborhood?: string
+  city?: string
+  latitude?: number
+  longitude?: number
+  location?: string  // Legacy field
+
   description?: string
   website?: string
   popularity?: number
 
-  // Flattened from metadata for convenience
+  // From metadata
   email?: string
   phone?: string
-  latitude?: number
-  longitude?: number
-  neighborhood?: string
-  city?: string
 
   // Discovery
   discoverySource?: DiscoverySource
@@ -100,18 +107,22 @@ export function toDisplayEntity(entity: Entity & { event_entity?: { status: Enti
     id: entity.id,
     name: entity.name,
     tags: entity.tags || [],
+
+    // Location (now direct columns)
+    address: entity.address || undefined,
+    neighborhood: entity.neighborhood || undefined,
+    city: entity.city || undefined,
+    latitude: entity.latitude || undefined,
+    longitude: entity.longitude || undefined,
     location: entity.location || undefined,
+
     description: entity.description || undefined,
     website: entity.website || undefined,
     popularity: entity.popularity || undefined,
 
-    // Flatten metadata
+    // From metadata
     email: m.email,
     phone: m.phone,
-    latitude: m.latitude,
-    longitude: m.longitude,
-    neighborhood: m.neighborhood,
-    city: m.city,
 
     discoverySource: m.discovery_source,
     googlePlaceId: m.google_place_id,
@@ -147,12 +158,6 @@ export function toEntity(display: DisplayEntity): Omit<Entity, 'id' | 'created_a
   if (display.email) metadata.email = display.email
   if (display.phone) metadata.phone = display.phone
 
-  // Location
-  if (display.latitude) metadata.latitude = display.latitude
-  if (display.longitude) metadata.longitude = display.longitude
-  if (display.neighborhood) metadata.neighborhood = display.neighborhood
-  if (display.city) metadata.city = display.city
-
   // Discovery
   if (display.discoverySource) metadata.discovery_source = display.discoverySource
   if (display.googlePlaceId) metadata.google_place_id = display.googlePlaceId
@@ -176,7 +181,14 @@ export function toEntity(display: DisplayEntity): Omit<Entity, 'id' | 'created_a
   return {
     name: display.name,
     tags: display.tags,
+    // Location columns
+    address: display.address || null,
+    neighborhood: display.neighborhood || null,
+    city: display.city || null,
+    latitude: display.latitude || null,
+    longitude: display.longitude || null,
     location: display.location || null,
+    // Other fields
     description: display.description || null,
     website: display.website || null,
     popularity: display.popularity || null,

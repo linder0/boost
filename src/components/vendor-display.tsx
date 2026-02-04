@@ -1,6 +1,7 @@
 'use client'
 
 import { Badge } from './ui/badge'
+import { getSourceDisplay } from '@/lib/formatting'
 
 // ============================================================================
 // Types
@@ -28,25 +29,6 @@ export interface VendorDisplayProps extends VendorNameDisplayProps, VendorEmailD
 // ============================================================================
 // VendorNameDisplay - Vendor name with rating and website link
 // ============================================================================
-
-// Map discovery source to display label and color
-function getSourceDisplay(source: string | null | undefined): { label: string; color: string } | null {
-  if (!source) return null
-  switch (source) {
-    case 'google_places':
-      return { label: 'Google', color: 'text-blue-600 border-blue-300' }
-    case 'resy':
-      return { label: 'Resy', color: 'text-purple-600 border-purple-300' }
-    case 'opentable':
-      return { label: 'OpenTable', color: 'text-red-600 border-red-300' }
-    case 'beli':
-      return { label: 'Beli', color: 'text-orange-600 border-orange-300' }
-    case 'demo':
-      return { label: 'Demo', color: 'text-gray-600 border-gray-300' }
-    default:
-      return null
-  }
-}
 
 export function VendorNameDisplay({
   name,

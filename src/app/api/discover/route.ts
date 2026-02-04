@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import {
   discoverRestaurants,
   DiscoveredRestaurant,
@@ -18,8 +17,10 @@ function sendEvent(
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const eventId = searchParams.get('eventId')
+  const city = searchParams.get('city') || 'New York'
   const cuisine = searchParams.get('cuisine') || undefined
+  const partySize = parseInt(searchParams.get('partySize') || '10', 10)
+  
   // Support both single 'neighborhood' and multiple 'neighborhoods' params
   const neighborhoodsParam = searchParams.get('neighborhoods')
   const singleNeighborhood = searchParams.get('neighborhood')
@@ -29,31 +30,6 @@ export async function GET(request: NextRequest) {
       ? [singleNeighborhood]
       : undefined
   const sourcesParam = searchParams.get('sources')
-
-  if (!eventId) {
-    return new Response('Missing eventId', { status: 400 })
-  }
-
-  // Verify user is authenticated and owns the event
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return new Response('Unauthorized', { status: 401 })
-  }
-
-  const { data: event, error } = await supabase
-    .from('events')
-    .select('*')
-    .eq('id', eventId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (error || !event) {
-    return new Response('Event not found', { status: 404 })
-  }
 
   // Parse sources from query param or use defaults
   const sources: DiscoverySource[] = sourcesParam
@@ -66,7 +42,7 @@ export async function GET(request: NextRequest) {
       try {
         // Step 1: Log start
         sendEvent(controller, 'log', {
-          message: `Starting restaurant discovery for ${event.name}...`,
+          message: `Starting restaurant discovery in ${city}...`,
         })
         await sleep(300)
 
@@ -85,27 +61,19 @@ export async function GET(request: NextRequest) {
         })
         await sleep(200)
 
-        // Step 3: Discover restaurants
-        // Use provided neighborhoods or fall back to event constraints
-        const searchNeighborhoods = neighborhoods?.length
-          ? neighborhoods
-          : event.constraints?.neighborhood
-            ? [event.constraints.neighborhood]
-            : undefined
-
-        // Log which neighborhoods we're searching
-        if (searchNeighborhoods?.length) {
+        // Step 3: Log which neighborhoods we're searching
+        if (neighborhoods?.length) {
           sendEvent(controller, 'log', {
-            message: `Searching in: ${searchNeighborhoods.join(', ')}`,
+            message: `Searching in: ${neighborhoods.join(', ')}`,
           })
           await sleep(200)
         }
 
         const restaurants = await discoverRestaurants({
-          city: event.city || 'New York',
-          neighborhoods: searchNeighborhoods,
+          city,
+          neighborhoods,
           cuisine,
-          partySize: event.headcount,
+          partySize,
           sources,
           limit: 30,
         })

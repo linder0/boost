@@ -19,7 +19,6 @@ import {
 import {
   discoverOpenTablePrivateDining,
   getBeliRankings,
-  DiscoveredRestaurant as ClawdbotRestaurant,
 } from './clawdbot'
 import {
   estimatePriceRange,
@@ -29,24 +28,25 @@ import {
 } from './utils'
 
 // Re-exports for external use
-export { searchVenues, GooglePlaceVenue } from './google-places'
-export { findEmail, findEmailsBatch, HunterEmailResult } from './hunter'
-export { searchResyVenues, checkResyAvailability, ResyVenue, ResyAvailability } from './resy'
+export { searchVenues } from './google-places'
+export type { GooglePlaceVenue } from './google-places'
+export { findEmail, findEmailsBatch } from './hunter'
+export type { HunterEmailResult } from './hunter'
+export { searchResyVenues, checkResyAvailability } from './resy'
+export type { ResyVenue, ResyAvailability } from './resy'
 export {
   searchOpenTableVenues,
   checkOpenTableAvailability,
-  OpenTableVenue,
-  OpenTableAvailability,
   getOpenTableReservationUrl,
   getMetroId,
 } from './opentable'
+export type { OpenTableVenue, OpenTableAvailability } from './opentable'
 export {
   discoverOpenTablePrivateDining,
   getBeliRankings,
   discoverContactInfo,
-  ClawdbotTask,
-  ClawdbotTaskType,
 } from './clawdbot'
+export type { ClawdbotTask, ClawdbotTaskType } from './clawdbot'
 export * from './utils'
 
 // ============================================================================

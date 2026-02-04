@@ -14,49 +14,33 @@ import { Badge } from './ui/badge'
 import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
 import { LocationPicker, LocationData, MapboxMap } from './mapbox'
-import { EntityWithStatus } from '@/types/database'
+import { Entity } from '@/types/database'
 import { updateEntity } from '@/app/actions/entities'
 import { VendorNameDisplay, VendorEmailDisplay } from './vendor-display'
+import { formatPriceLevel, formatSource } from '@/lib/formatting'
 
 interface VendorDrawerProps {
-  vendor: EntityWithStatus | null
+  vendor: Entity | null
   onClose: () => void
 }
 
 export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
-  const [loading, setLoading] = useState(false)
   const [editingLocation, setEditingLocation] = useState(false)
   const [locationSaving, setLocationSaving] = useState(false)
   const [vendorLocation, setVendorLocation] = useState<LocationData | null>(null)
-  const [editingNotes, setEditingNotes] = useState(false)
-  const [notes, setNotes] = useState('')
-  const [notesSaving, setNotesSaving] = useState(false)
+  const [editingDescription, setEditingDescription] = useState(false)
+  const [description, setDescription] = useState('')
+  const [descriptionSaving, setDescriptionSaving] = useState(false)
 
   if (!vendor) return null
 
-  const status = vendor.event_entity?.status
   const metadata = vendor.metadata || {}
 
-  // Get location from metadata
+  // Get location from entity columns
   const currentLocation: LocationData | null =
-    metadata.latitude && metadata.longitude
-      ? { address: vendor.location || '', lat: metadata.latitude, lng: metadata.longitude }
+    (vendor.latitude != null && vendor.longitude != null)
+      ? { address: vendor.address || vendor.location || '', lat: vendor.latitude, lng: vendor.longitude }
       : null
-
-  // Status badge variant
-  const statusVariant =
-    status === 'confirmed' ? 'default' :
-    status === 'rejected' ? 'destructive' :
-    status === 'contacted' || status === 'responded' ? 'secondary' :
-    'outline'
-
-  const statusLabel =
-    status === 'discovered' ? 'Not Contacted' :
-    status === 'contacted' ? 'Waiting' :
-    status === 'responded' ? 'Responded' :
-    status === 'confirmed' ? 'Confirmed' :
-    status === 'rejected' ? 'Rejected' :
-    status || 'Unknown'
 
   return (
     <Dialog open={!!vendor} onOpenChange={onClose}>
@@ -72,11 +56,6 @@ export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
               showDiscoveryBadge
             />
             <div className="flex items-center gap-3">
-              {status && (
-                <Badge variant={statusVariant}>
-                  {statusLabel}
-                </Badge>
-              )}
               <DialogClose className="rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none cursor-pointer">
                 <X className="h-5 w-5" />
                 <span className="sr-only">Close</span>
@@ -92,7 +71,7 @@ export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
                 </>
               )}
               <VendorEmailDisplay
-                email={metadata.email}
+                email={metadata.email || ''}
                 emailConfidence={metadata.email_confidence}
               />
               {metadata.phone && (
@@ -128,12 +107,66 @@ export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
         <div className="flex-1 overflow-y-auto px-6 py-6">
           <div className="space-y-6">
             {/* Description Section */}
-            {vendor.description && (
-              <div className="space-y-2">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">About</h3>
-                <p className="text-sm text-muted-foreground">{vendor.description}</p>
+                {!editingDescription && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDescription(vendor.description || '')
+                      setEditingDescription(true)
+                    }}
+                  >
+                    {vendor.description ? 'Edit' : 'Add Description'}
+                  </Button>
+                )}
               </div>
-            )}
+
+              {editingDescription ? (
+                <div className="space-y-3">
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={4}
+                    placeholder="Add a description about this venue..."
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        setDescriptionSaving(true)
+                        try {
+                          await updateEntity(vendor.id, {
+                            description: description || undefined,
+                          })
+                          setEditingDescription(false)
+                        } catch (error) {
+                          console.error('Failed to save description:', error)
+                        } finally {
+                          setDescriptionSaving(false)
+                        }
+                      }}
+                      disabled={descriptionSaving}
+                    >
+                      {descriptionSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditingDescription(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : vendor.description ? (
+                <p className="text-sm text-muted-foreground">{vendor.description}</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">No description added</p>
+              )}
+            </div>
 
             {/* Tags Section */}
             {vendor.tags && vendor.tags.length > 0 && (
@@ -146,69 +179,6 @@ export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
                 </div>
               </div>
             )}
-
-            {/* Notes Section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Notes</h3>
-                {!editingNotes && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setNotes(vendor.event_entity?.notes || '')
-                      setEditingNotes(true)
-                    }}
-                  >
-                    {vendor.event_entity?.notes ? 'Edit' : 'Add Notes'}
-                  </Button>
-                )}
-              </div>
-
-              {editingNotes ? (
-                <div className="space-y-3">
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={4}
-                    placeholder="Add notes about this venue..."
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={async () => {
-                        setNotesSaving(true)
-                        try {
-                          // Notes are stored in event_entity, not the entity itself
-                          // For now, just close the editor
-                          setEditingNotes(false)
-                        } catch (error) {
-                          console.error('Failed to save notes:', error)
-                        } finally {
-                          setNotesSaving(false)
-                        }
-                      }}
-                      disabled={notesSaving}
-                    >
-                      {notesSaving ? 'Saving...' : 'Save Notes'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingNotes(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : vendor.event_entity?.notes ? (
-                <div className="rounded-md bg-muted p-4">
-                  <p className="text-sm whitespace-pre-wrap">{vendor.event_entity.notes}</p>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No notes added</p>
-              )}
-            </div>
 
             {/* Location Section */}
             <div className="space-y-3">
@@ -293,7 +263,7 @@ export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
                 {metadata.discovery_source && (
                   <div>
                     <span className="font-medium">Source:</span>{' '}
-                    <span className="text-muted-foreground">{metadata.discovery_source}</span>
+                    <span className="text-muted-foreground">{formatSource(metadata.discovery_source)}</span>
                   </div>
                 )}
                 {metadata.rating && (
@@ -311,13 +281,31 @@ export function VendorDrawer({ vendor, onClose }: VendorDrawerProps) {
                 {metadata.price_level && (
                   <div>
                     <span className="font-medium">Price:</span>{' '}
-                    <span className="text-muted-foreground">{'$'.repeat(metadata.price_level)}</span>
+                    <span className="text-muted-foreground">{formatPriceLevel(metadata.price_level)}</span>
                   </div>
                 )}
                 {vendor.popularity && (
                   <div>
                     <span className="font-medium">Popularity:</span>{' '}
                     <span className="text-muted-foreground">{vendor.popularity.toFixed(1)}</span>
+                  </div>
+                )}
+                {vendor.neighborhood && (
+                  <div>
+                    <span className="font-medium">Neighborhood:</span>{' '}
+                    <span className="text-muted-foreground">{vendor.neighborhood}</span>
+                  </div>
+                )}
+                {vendor.city && (
+                  <div>
+                    <span className="font-medium">City:</span>{' '}
+                    <span className="text-muted-foreground">{vendor.city}</span>
+                  </div>
+                )}
+                {vendor.address && (
+                  <div className="col-span-2">
+                    <span className="font-medium">Address:</span>{' '}
+                    <span className="text-muted-foreground">{vendor.address}</span>
                   </div>
                 )}
               </div>

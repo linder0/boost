@@ -1,17 +1,14 @@
 'use server'
 
 import {
-  getAuthenticatedClient,
-  verifyEventOwnership,
+  createClient,
   handleSupabaseError,
   ensureFound
 } from '@/lib/supabase/server'
-import { Entity, EntityWithStatus, Event, EntityMetadata, DiscoverySource } from '@/types/database'
-import { DisplayEntity, toEntity, toDisplayEntity, calculatePopularity } from '@/types/entities'
+import { Entity, EntityMetadata, DiscoverySource } from '@/types/database'
+import { calculatePopularity } from '@/types/entities'
 import { revalidatePath } from 'next/cache'
 import { validateUUID } from '@/lib/utils'
-import { findMatchingRestaurants, DemoRestaurant } from '@/lib/demo/restaurants'
-import { discoverRestaurants, DiscoveredRestaurant } from '@/lib/discovery'
 
 // ============================================================================
 // Entity CRUD Operations
@@ -28,7 +25,7 @@ export async function createEntity(data: {
   website?: string
   metadata?: EntityMetadata
 }) {
-  const { supabase } = await getAuthenticatedClient()
+  const supabase = await createClient()
 
   const { data: entity, error } = await supabase
     .from('entities')
@@ -53,7 +50,7 @@ export async function createEntity(data: {
 export async function getEntity(entityId: string) {
   validateUUID(entityId, 'entity ID')
 
-  const { supabase } = await getAuthenticatedClient()
+  const supabase = await createClient()
 
   const { data: entity, error } = await supabase
     .from('entities')
@@ -62,6 +59,22 @@ export async function getEntity(entityId: string) {
     .single()
 
   return ensureFound(entity, error, 'Entity not found') as Entity
+}
+
+/**
+ * Get all entities
+ */
+export async function getAllEntities(): Promise<Entity[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('entities')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  handleSupabaseError(error, 'Failed to fetch entities')
+
+  return (data ?? []) as Entity[]
 }
 
 /**
@@ -78,7 +91,7 @@ export async function updateEntity(
     metadata: EntityMetadata
   }>
 ) {
-  const { supabase } = await getAuthenticatedClient()
+  const supabase = await createClient()
 
   const updateData: Record<string, unknown> = { ...data }
 
@@ -97,6 +110,8 @@ export async function updateEntity(
     .select()
     .single()
 
+  revalidatePath('/')
+
   return ensureFound(entity, error, 'Failed to update entity') as Entity
 }
 
@@ -104,135 +119,33 @@ export async function updateEntity(
  * Delete an entity
  */
 export async function deleteEntity(entityId: string) {
-  const { supabase } = await getAuthenticatedClient()
+  const supabase = await createClient()
 
   const { error } = await supabase.from('entities').delete().eq('id', entityId)
   handleSupabaseError(error, 'Failed to delete entity')
 
-  return { success: true }
-}
-
-// ============================================================================
-// Event-Entity Operations
-// ============================================================================
-
-/**
- * Add an entity to an event
- */
-export async function addEntityToEvent(
-  eventId: string,
-  entityId: string,
-  options?: { status?: string; notes?: string }
-) {
-  const { supabase, user } = await getAuthenticatedClient()
-
-  await verifyEventOwnership(supabase, eventId, user.id)
-
-  const { data, error } = await supabase
-    .from('event_entities')
-    .insert({
-      event_id: eventId,
-      entity_id: entityId,
-      status: options?.status || 'discovered',
-      notes: options?.notes || null,
-    })
-    .select()
-    .single()
-
-  handleSupabaseError(error, 'Failed to add entity to event')
-  revalidatePath(`/events/${eventId}/vendors`)
-
-  return data
-}
-
-/**
- * Remove an entity from an event
- */
-export async function removeEntityFromEvent(eventId: string, entityId: string) {
-  const { supabase, user } = await getAuthenticatedClient()
-
-  await verifyEventOwnership(supabase, eventId, user.id)
-
-  const { error } = await supabase
-    .from('event_entities')
-    .delete()
-    .eq('event_id', eventId)
-    .eq('entity_id', entityId)
-
-  handleSupabaseError(error, 'Failed to remove entity from event')
-  revalidatePath(`/events/${eventId}/vendors`)
+  revalidatePath('/')
 
   return { success: true }
 }
 
 /**
- * Get all entities for an event
+ * Bulk delete entities
  */
-export async function getEntitiesByEvent(eventId: string): Promise<EntityWithStatus[]> {
-  validateUUID(eventId, 'event ID')
-
-  const { supabase } = await getAuthenticatedClient()
-
-  const { data, error } = await supabase
-    .from('entities')
-    .select(`
-      *,
-      event_entity:event_entities!inner(*)
-    `)
-    .eq('event_entities.event_id', eventId)
-    .order('created_at', { ascending: false })
-
-  handleSupabaseError(error, 'Failed to fetch entities')
-
-  return (data ?? []).map((row: Entity & { event_entity: unknown }) => ({
-    ...row,
-    event_entity: row.event_entity as EntityWithStatus['event_entity'],
-  })) as EntityWithStatus[]
-}
-
-/**
- * Update entity status for an event
- */
-export async function updateEventEntityStatus(
-  eventId: string,
-  entityId: string,
-  status: string
-) {
-  const { supabase, user } = await getAuthenticatedClient()
-
-  await verifyEventOwnership(supabase, eventId, user.id)
-
-  const { error } = await supabase
-    .from('event_entities')
-    .update({ status })
-    .eq('event_id', eventId)
-    .eq('entity_id', entityId)
-
-  handleSupabaseError(error, 'Failed to update entity status')
-  revalidatePath(`/events/${eventId}/vendors`)
-
-  return { success: true }
-}
-
-/**
- * Bulk delete entities from an event
- */
-export async function bulkRemoveEntitiesFromEvent(eventId: string, entityIds: string[]) {
+export async function bulkDeleteEntities(entityIds: string[]) {
   if (entityIds.length === 0) {
     return { success: true, count: 0 }
   }
 
-  const { supabase, user } = await getAuthenticatedClient()
-  await verifyEventOwnership(supabase, eventId, user.id)
+  const supabase = await createClient()
 
   const { error } = await supabase
-    .from('event_entities')
+    .from('entities')
     .delete()
-    .eq('event_id', eventId)
-    .in('entity_id', entityIds)
+    .in('id', entityIds)
 
-  handleSupabaseError(error, 'Failed to remove entities')
-  revalidatePath(`/events/${eventId}/vendors`)
+  handleSupabaseError(error, 'Failed to delete entities')
+  revalidatePath('/')
 
   return { success: true, count: entityIds.length }
 }
@@ -247,14 +160,17 @@ export async function bulkRemoveEntitiesFromEvent(eventId: string, entityIds: st
 export interface DiscoveredEntityInput {
   name: string
   tags?: string[]
-  location?: string
+  // Location fields (granular)
+  address?: string        // Full street address
+  neighborhood?: string   // e.g., "Tribeca", "West Village"
+  city?: string           // e.g., "New York"
+  latitude?: number
+  longitude?: number
+  location?: string       // Legacy field, fallback
+  // Contact
   website?: string
   email?: string
   phone?: string
-  latitude?: number
-  longitude?: number
-  neighborhood?: string
-  city?: string
   // Discovery
   discoverySource?: DiscoverySource
   googlePlaceId?: string
@@ -274,81 +190,16 @@ export interface DiscoveredEntityInput {
 }
 
 /**
- * Discover restaurants for an event
- */
-export async function discoverRestaurantsForEvent(eventId: string): Promise<{
-  restaurants: (DemoRestaurant | DiscoveredRestaurant)[]
-  event: { city: string; headcount: number; budget: number }
-  source: 'google_places' | 'resy' | 'demo'
-}> {
-  validateUUID(eventId, 'event ID')
-
-  const { supabase, user } = await getAuthenticatedClient()
-
-  const event = await verifyEventOwnership(supabase, eventId, user.id)
-
-  // Try real discovery first (Google Places + Resy)
-  const hasGooglePlacesKey = !!process.env.GOOGLE_PLACES_API_KEY
-
-  if (hasGooglePlacesKey) {
-    try {
-      const discoveredRestaurants = await discoverRestaurants({
-        city: event.city || 'New York',
-        neighborhood: event.constraints?.neighborhood,
-        partySize: event.headcount,
-        sources: ['google_places', 'resy'],
-        limit: 30,
-      })
-
-      if (discoveredRestaurants.length > 0) {
-        return {
-          restaurants: discoveredRestaurants,
-          event: {
-            city: event.city || 'New York',
-            headcount: event.headcount,
-            budget: event.total_budget,
-          },
-          source: 'google_places',
-        }
-      }
-    } catch (error) {
-      console.error('Real discovery failed, falling back to demo data:', error)
-    }
-  }
-
-  // Fallback to demo restaurants
-  const restaurants = findMatchingRestaurants({
-    headcount: event.headcount,
-    budget: event.total_budget || event.venue_budget_ceiling,
-    neighborhood: event.constraints?.neighborhood,
-    requiresPrivateDining: event.constraints?.requires_private_dining,
-  })
-
-  return {
-    restaurants,
-    event: {
-      city: event.city || 'New York',
-      headcount: event.headcount,
-      budget: event.total_budget,
-    },
-    source: 'demo',
-  }
-}
-
-/**
- * Create entities from discovered venues and add to event
+ * Create entities from discovered venues
  */
 export async function createEntitiesFromDiscovery(
-  eventId: string,
   discoveries: DiscoveredEntityInput[]
 ): Promise<Entity[]> {
   if (discoveries.length === 0) {
     throw new Error('No venues selected')
   }
 
-  const { supabase, user } = await getAuthenticatedClient()
-
-  await verifyEventOwnership(supabase, eventId, user.id)
+  const supabase = await createClient()
 
   // Check for existing entities by Google Place ID or name to avoid duplicates
   const googlePlaceIds = discoveries
@@ -372,125 +223,72 @@ export async function createEntitiesFromDiscovery(
     (existingEntities ?? []).map((e: { name: string }) => e.name.toLowerCase())
   )
 
-  // Separate new vs existing
-  const newDiscoveries: DiscoveredEntityInput[] = []
-  const existingIds: string[] = []
-
-  for (const d of discoveries) {
+  // Filter out existing entities
+  const newDiscoveries = discoveries.filter(d => {
     const isExisting = (d.googlePlaceId && existingPlaceIds.has(d.googlePlaceId)) ||
       existingNames.has(d.name.toLowerCase())
+    return !isExisting
+  })
 
-    if (isExisting) {
-      const existing = (existingEntities ?? []).find((e: { name: string; metadata: EntityMetadata }) =>
-        e.metadata?.google_place_id === d.googlePlaceId ||
-        e.name.toLowerCase() === d.name.toLowerCase()
-      )
-      if (existing) {
-        existingIds.push(existing.id)
-      }
-    } else {
-      newDiscoveries.push(d)
-    }
+  if (newDiscoveries.length === 0) {
+    // All entities already exist
+    return []
   }
 
   // Create new entities
-  const createdEntities: Entity[] = []
+  const entitiesToInsert = newDiscoveries.map(d => {
+    // Metadata for additional fields not in columns
+    const metadata: EntityMetadata = {
+      email: d.email,
+      phone: d.phone,
+      discovery_source: d.discoverySource,
+      google_place_id: d.googlePlaceId,
+      rating: d.rating,
+      review_count: d.reviewCount,
+      email_confidence: d.emailConfidence,
+      cuisine: d.cuisine,
+      price_level: d.priceLevel,
+      has_private_dining: d.hasPrivateDining,
+      private_dining_capacity_min: d.privateDiningCapacityMin,
+      private_dining_capacity_max: d.privateDiningCapacityMax,
+      private_dining_minimum: d.privateDiningMinimum,
+      resy_venue_id: d.resyVenueId,
+      opentable_id: d.opentableId,
+      beli_rank: d.beliRank,
+    }
 
-  if (newDiscoveries.length > 0) {
-    const entitiesToInsert = newDiscoveries.map(d => {
-      const metadata: EntityMetadata = {
-        email: d.email,
-        phone: d.phone,
-        latitude: d.latitude,
-        longitude: d.longitude,
-        neighborhood: d.neighborhood,
-        city: d.city,
-        discovery_source: d.discoverySource,
-        google_place_id: d.googlePlaceId,
-        rating: d.rating,
-        review_count: d.reviewCount,
-        email_confidence: d.emailConfidence,
-        cuisine: d.cuisine,
-        price_level: d.priceLevel,
-        has_private_dining: d.hasPrivateDining,
-        private_dining_capacity_min: d.privateDiningCapacityMin,
-        private_dining_capacity_max: d.privateDiningCapacityMax,
-        private_dining_minimum: d.privateDiningMinimum,
-        resy_venue_id: d.resyVenueId,
-        opentable_id: d.opentableId,
-        beli_rank: d.beliRank,
-      }
-
-      // Clean undefined values
-      Object.keys(metadata).forEach(key => {
-        if (metadata[key as keyof EntityMetadata] === undefined) {
-          delete metadata[key as keyof EntityMetadata]
-        }
-      })
-
-      return {
-        name: d.name,
-        tags: d.tags || ['restaurant'],
-        location: d.location || d.neighborhood || d.city || null,
-        website: d.website || null,
-        popularity: calculatePopularity(d.rating, d.reviewCount),
-        metadata,
+    // Clean undefined values
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key as keyof EntityMetadata] === undefined) {
+        delete metadata[key as keyof EntityMetadata]
       }
     })
 
-    const { data: created, error } = await supabase
-      .from('entities')
-      .insert(entitiesToInsert)
-      .select()
+    return {
+      name: d.name,
+      tags: d.tags || ['restaurant'],
+      // Granular location columns
+      address: d.address || null,
+      neighborhood: d.neighborhood || null,
+      city: d.city || null,
+      latitude: d.latitude || null,
+      longitude: d.longitude || null,
+      // Legacy location field (for display)
+      location: d.location || d.address || (d.neighborhood && d.city ? `${d.neighborhood}, ${d.city}` : d.city) || null,
+      website: d.website || null,
+      popularity: calculatePopularity(d.rating, d.reviewCount),
+      metadata,
+    }
+  })
 
-    handleSupabaseError(error, 'Failed to create entities')
-    createdEntities.push(...(created ?? []))
-  }
+  const { data: created, error } = await supabase
+    .from('entities')
+    .insert(entitiesToInsert)
+    .select()
 
-  // Link all entities (new + existing) to the event
-  const allEntityIds = [
-    ...createdEntities.map(e => e.id),
-    ...existingIds,
-  ]
+  handleSupabaseError(error, 'Failed to create entities')
 
-  if (allEntityIds.length > 0) {
-    const eventEntities = allEntityIds.map(entityId => ({
-      event_id: eventId,
-      entity_id: entityId,
-      status: 'discovered',
-    }))
+  revalidatePath('/')
 
-    // Use upsert to handle duplicates gracefully
-    const { error: linkError } = await supabase
-      .from('event_entities')
-      .upsert(eventEntities, { onConflict: 'event_id,entity_id' })
-
-    handleSupabaseError(linkError, 'Failed to link entities to event')
-  }
-
-  revalidatePath(`/events/${eventId}/vendors`)
-
-  return createdEntities
-}
-
-// ============================================================================
-// Legacy Compatibility (for gradual migration)
-// ============================================================================
-
-/** @deprecated Use getEntitiesByEvent instead */
-export async function getVendorsByEvent(eventId: string) {
-  return getEntitiesByEvent(eventId)
-}
-
-/** @deprecated Use createEntitiesFromDiscovery instead */
-export async function createVendorsFromDiscovery(
-  eventId: string,
-  selectedVenues: DiscoveredEntityInput[]
-) {
-  return createEntitiesFromDiscovery(eventId, selectedVenues)
-}
-
-/** @deprecated Use bulkRemoveEntitiesFromEvent instead */
-export async function bulkDeleteVendors(vendorIds: string[], eventId: string) {
-  return bulkRemoveEntitiesFromEvent(eventId, vendorIds)
+  return (created ?? []) as Entity[]
 }

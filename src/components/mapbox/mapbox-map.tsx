@@ -1,24 +1,36 @@
 'use client'
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
+import { createMarkerElement, updateMarkerSelection } from './map-marker-label'
 
 export interface MapMarker {
   id: string
   lat: number
   lng: number
-  label?: string
-  color?: string
+  label?: string          // Display text on marker (shown as pill label)
+  priceLabel?: string     // Alternative label e.g., "$$$"
+  color?: string          // Fallback for simple dot markers
   draggable?: boolean
+  useCustomMarker?: boolean  // Use Airbnb-style pill marker
+}
+
+export interface MarkerPosition {
+  id: string
+  x: number
+  y: number
+  lat: number
+  lng: number
 }
 
 interface MapboxMapProps {
   center?: { lat: number; lng: number }
   zoom?: number
   markers?: MapMarker[]
+  selectedMarkerId?: string | null
   interactive?: boolean
   clickToSet?: boolean
   onMapClick?: (coords: { lat: number; lng: number }) => void
-  onMarkerClick?: (markerId: string) => void
+  onMarkerClick?: (markerId: string, position: MarkerPosition) => void
   onMarkerDrag?: (markerId: string, coords: { lat: number; lng: number }) => void
   className?: string
   height?: string
@@ -29,6 +41,7 @@ export function MapboxMap({
   center = { lat: 40.7128, lng: -74.006 }, // Default to NYC
   zoom = 12,
   markers = [],
+  selectedMarkerId,
   interactive = true,
   clickToSet = false,
   onMapClick,
@@ -40,12 +53,22 @@ export function MapboxMap({
 }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
-  const markersRef = useRef<any[]>([])
+  const markersRef = useRef<Map<string, { marker: any; element: HTMLDivElement }>>(new Map())
   const mapboxglRef = useRef<any>(null)
+  const hasFitBoundsRef = useRef(false)  // Track if we've already fit bounds
   const [mapReady, setMapReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+
+  // Get marker screen position
+  const getMarkerPosition = useCallback((markerId: string, lat: number, lng: number): MarkerPosition => {
+    if (!mapRef.current) {
+      return { id: markerId, x: 0, y: 0, lat, lng }
+    }
+    const point = mapRef.current.project([lng, lat])
+    return { id: markerId, x: point.x, y: point.y, lat, lng }
+  }, [])
 
   // Load mapbox-gl dynamically on client side
   useEffect(() => {
@@ -61,15 +84,15 @@ export function MapboxMap({
         // Dynamically import mapbox-gl
         const mapboxModule = await import('mapbox-gl')
         const mapboxgl = mapboxModule.default
-        
+
         // Import CSS
         await import('mapbox-gl/dist/mapbox-gl.css')
-        
+
         if (!isMounted || !mapContainer.current) return
-        
+
         // Store reference
         mapboxglRef.current = mapboxgl
-        
+
         // Set access token
         mapboxgl.accessToken = accessToken
 
@@ -151,22 +174,41 @@ export function MapboxMap({
     const mapboxgl = mapboxglRef.current
 
     // Remove existing markers
-    markersRef.current.forEach((marker) => marker.remove())
-    markersRef.current = []
+    markersRef.current.forEach(({ marker }) => marker.remove())
+    markersRef.current.clear()
 
     // Add new markers
     markers.forEach((markerData) => {
-      const el = document.createElement('div')
-      el.className = 'mapbox-marker'
-      el.style.backgroundColor = markerData.color || '#000000'
-      el.style.width = '24px'
-      el.style.height = '24px'
-      el.style.borderRadius = '50%'
-      el.style.border = '3px solid white'
-      el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-      el.style.cursor = markerData.draggable ? 'grab' : 'pointer'
+      const useCustom = markerData.useCustomMarker !== false && (markerData.label || markerData.priceLabel)
+      const isSelected = selectedMarkerId === markerData.id
 
-      const marker = new mapboxgl.Marker({ element: el, draggable: markerData.draggable || false })
+      let el: HTMLDivElement
+
+      if (useCustom) {
+        // Create Airbnb-style pill marker
+        el = createMarkerElement({
+          label: markerData.label || markerData.priceLabel || '',
+          priceLabel: markerData.priceLabel,
+          isSelected,
+        })
+      } else {
+        // Create simple dot marker
+        el = document.createElement('div')
+        el.className = 'mapbox-marker'
+        el.style.backgroundColor = markerData.color || '#000000'
+        el.style.width = '24px'
+        el.style.height = '24px'
+        el.style.borderRadius = '50%'
+        el.style.border = '3px solid white'
+        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
+        el.style.cursor = markerData.draggable ? 'grab' : 'pointer'
+      }
+
+      const marker = new mapboxgl.Marker({
+          element: el,
+          draggable: markerData.draggable || false,
+          anchor: 'center'  // Center the marker on coordinates
+        })
         .setLngLat([markerData.lng, markerData.lat])
         .addTo(mapRef.current!)
 
@@ -178,25 +220,21 @@ export function MapboxMap({
         })
       }
 
-      // Add popup if label exists
-      if (markerData.label) {
-        const popup = new mapboxgl.Popup({ offset: 25 }).setText(markerData.label)
-        marker.setPopup(popup)
-      }
-
       // Handle marker click
       if (onMarkerClick) {
         el.addEventListener('click', (e) => {
           e.stopPropagation()
-          onMarkerClick(markerData.id)
+          const position = getMarkerPosition(markerData.id, markerData.lat, markerData.lng)
+          onMarkerClick(markerData.id, position)
         })
       }
 
-      markersRef.current.push(marker)
+      markersRef.current.set(markerData.id, { marker, element: el })
     })
 
-    // Fit bounds if multiple markers
-    if (markers.length > 1) {
+    // Fit bounds only on initial load (not when selection changes)
+    if (markers.length > 1 && !hasFitBoundsRef.current) {
+      hasFitBoundsRef.current = true
       const bounds = new mapboxgl.LngLatBounds()
       markers.forEach((m) => bounds.extend([m.lng, m.lat]))
       mapRef.current.fitBounds(bounds, {
@@ -205,7 +243,15 @@ export function MapboxMap({
         duration: 1000,
       })
     }
-  }, [markers, mapReady, onMarkerClick, onMarkerDrag])
+  }, [markers, mapReady, onMarkerClick, onMarkerDrag, getMarkerPosition, selectedMarkerId])
+
+  // Update selected marker styling
+  useEffect(() => {
+    markersRef.current.forEach(({ element }, id) => {
+      const isSelected = selectedMarkerId === id
+      updateMarkerSelection(element, isSelected)
+    })
+  }, [selectedMarkerId])
 
   // Draw radius circle
   useEffect(() => {
