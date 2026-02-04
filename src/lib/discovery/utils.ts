@@ -67,6 +67,47 @@ export function extractNeighborhood(address: string): string | undefined {
   return undefined
 }
 
+/**
+ * NYC Borough mapping
+ */
+const NYC_BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island']
+
+/**
+ * Extract borough from an NYC address
+ * Looks for borough names in the address string
+ */
+export function extractBorough(address: string): string | undefined {
+  const addressLower = address.toLowerCase()
+
+  // Check for borough in address
+  for (const borough of NYC_BOROUGHS) {
+    if (addressLower.includes(borough.toLowerCase())) {
+      return borough
+    }
+  }
+
+  // Check for common abbreviations and variations
+  if (addressLower.includes('ny ') || addressLower.includes('new york')) {
+    // If it says "New York, NY" without a borough, assume Manhattan
+    if (!addressLower.includes('brooklyn') &&
+        !addressLower.includes('queens') &&
+        !addressLower.includes('bronx') &&
+        !addressLower.includes('staten')) {
+      return 'Manhattan'
+    }
+  }
+
+  return undefined
+}
+
+/**
+ * Extract the street address (first line) from a full formatted address
+ */
+export function extractStreetAddress(address: string): string {
+  const parts = address.split(',').map((p) => p.trim())
+  return parts[0] || address
+}
+
 // ============================================================================
 // Email Utilities
 // ============================================================================

@@ -11,8 +11,8 @@ import { Vendor, VendorWithThread, Event } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { validateUUID } from '@/lib/utils'
 import { generateOutreachMessage } from '@/lib/ai/outreach-generator'
-import { findMatchingVenues, DemoVenue } from '@/lib/demo/venues'
-import { discoverVenues, DiscoveredVenue } from '@/lib/discovery'
+import { findMatchingRestaurants, DemoRestaurant, demoRestaurantToVendor } from '@/lib/demo/restaurants'
+import { discoverRestaurants, DiscoveredRestaurant } from '@/lib/discovery'
 import type { UserProfile } from '@/app/actions/profile'
 import { SupabaseClient } from '@supabase/supabase-js'
 
@@ -175,10 +175,31 @@ export async function deleteVendor(vendorId: string) {
   return { success: true }
 }
 
-export async function discoverVenuesForEvent(eventId: string): Promise<{
-  venues: (DemoVenue | DiscoveredVenue)[]
+export async function bulkDeleteVendors(vendorIds: string[], eventId: string) {
+  if (vendorIds.length === 0) {
+    return { success: true, count: 0 }
+  }
+
+  const { supabase, user } = await getAuthenticatedClient()
+
+  // Verify user owns this event
+  await verifyEventOwnership(supabase, eventId, user.id)
+
+  const { error } = await supabase
+    .from('vendors')
+    .delete()
+    .in('id', vendorIds)
+
+  handleSupabaseError(error, 'Failed to delete vendors')
+
+  revalidatePath(`/events/${eventId}/vendors`)
+  return { success: true, count: vendorIds.length }
+}
+
+export async function discoverRestaurantsForEvent(eventId: string): Promise<{
+  restaurants: (DemoRestaurant | DiscoveredRestaurant)[]
   event: { city: string; headcount: number; budget: number }
-  source: 'google_places' | 'demo'
+  source: 'google_places' | 'resy' | 'demo'
 }> {
   validateUUID(eventId, 'event ID')
 
@@ -186,25 +207,24 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
 
   const event = await verifyEventOwnership(supabase, eventId, user.id)
 
-  // Try real discovery first (Google Places + Hunter)
+  // Try real discovery first (Google Places + Resy)
   const hasGooglePlacesKey = !!process.env.GOOGLE_PLACES_API_KEY
 
   if (hasGooglePlacesKey) {
     try {
-      // Get venue types from event constraints, or use defaults
-      const venueTypes = event.constraints?.venue_types || ['restaurant', 'bar', 'rooftop']
+      const discoveredRestaurants = await discoverRestaurants({
+        city: event.city || 'New York',
+        neighborhood: event.constraints?.neighborhood,
+        partySize: event.headcount,
+        sources: ['google_places', 'resy'],
+        limit: 30,
+      })
 
-      const discoveredVenues = await discoverVenues(
-        event.city,
-        venueTypes,
-        20 // Limit results
-      )
-
-      if (discoveredVenues.length > 0) {
+      if (discoveredRestaurants.length > 0) {
         return {
-          venues: discoveredVenues,
+          restaurants: discoveredRestaurants,
           event: {
-            city: event.city,
+            city: event.city || 'New York',
             headcount: event.headcount,
             budget: event.total_budget,
           },
@@ -216,23 +236,18 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
     }
   }
 
-  // Fallback to demo venues
-  const venues = findMatchingVenues({
-    city: event.city,
+  // Fallback to demo restaurants
+  const restaurants = findMatchingRestaurants({
     headcount: event.headcount,
     budget: event.total_budget || event.venue_budget_ceiling,
-    venueTypes: event.constraints?.venue_types,
-    indoorOutdoor: event.constraints?.indoor_outdoor,
     neighborhood: event.constraints?.neighborhood,
-    requiresFood: event.constraints?.catering?.food,
-    requiresDrinks: event.constraints?.catering?.drinks,
-    externalVendorsRequired: event.constraints?.catering?.external_vendors_allowed,
+    requiresPrivateDining: event.constraints?.requires_private_dining,
   })
 
   return {
-    venues,
+    restaurants,
     event: {
-      city: event.city,
+      city: event.city || 'New York',
       headcount: event.headcount,
       budget: event.total_budget,
     },
@@ -240,7 +255,7 @@ export async function discoverVenuesForEvent(eventId: string): Promise<{
   }
 }
 
-// Input type for vendor discovery with all metadata fields
+// Input type for restaurant discovery with all metadata fields
 export interface DiscoveredVendorInput {
   name: string
   category: string
@@ -255,6 +270,15 @@ export interface DiscoveredVendorInput {
   google_place_id?: string
   phone?: string
   discovery_source?: string
+  // Restaurant-specific fields
+  cuisine?: string
+  has_private_dining?: boolean
+  private_dining_capacity_min?: number
+  private_dining_capacity_max?: number
+  private_dining_minimum?: number
+  resy_venue_id?: string
+  opentable_id?: string
+  beli_rank?: number
 }
 
 export async function createVendorsFromDiscovery(
@@ -306,7 +330,7 @@ export async function createVendorsFromDiscovery(
   const vendorsToInsert = uniqueVenues.map((v) => ({
     event_id: eventId,
     name: v.name,
-    category: v.category,
+    category: v.category || 'Restaurant',
     contact_email: v.contact_email,
     address: v.address || null,
     latitude: v.latitude || null,
@@ -318,6 +342,15 @@ export async function createVendorsFromDiscovery(
     google_place_id: v.google_place_id || null,
     phone: v.phone || null,
     discovery_source: v.discovery_source || 'manual',
+    // Restaurant-specific fields
+    cuisine: v.cuisine || null,
+    has_private_dining: v.has_private_dining ?? null,
+    private_dining_capacity_min: v.private_dining_capacity_min || null,
+    private_dining_capacity_max: v.private_dining_capacity_max || null,
+    private_dining_minimum: v.private_dining_minimum || null,
+    resy_venue_id: v.resy_venue_id || null,
+    opentable_id: v.opentable_id || null,
+    beli_rank: v.beli_rank || null,
   }))
 
   const { data: createdVendors, error } = await supabase

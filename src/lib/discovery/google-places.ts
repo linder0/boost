@@ -1,12 +1,12 @@
 /**
- * Google Places API integration for venue discovery
+ * Google Places API integration for restaurant discovery
+ * VROOM Select: Focused on NYC restaurants with private dining
  * Uses the Places API (New) Text Search endpoint
  */
 
-import { 
-  SEARCH_TYPE_CONFIG, 
-  getSearchConfig, 
-  type EntityCategory 
+import {
+  getSearchConfig,
+  type EntityCategory
 } from '@/lib/entities'
 import { mapPriceLevel, normalizeName } from './utils'
 
@@ -46,12 +46,13 @@ interface PlacesTextSearchResponse {
 }
 
 /**
- * Search for venues and vendors using Google Places Text Search API
+ * Search for restaurants using Google Places Text Search API
  */
 export async function searchVenues(
   city: string,
   searchTypes: string[] = ['restaurant', 'bar'],
-  limit = 20
+  limit = 20,
+  neighborhood?: string
 ): Promise<GooglePlaceVenue[]> {
   if (!GOOGLE_PLACES_API_KEY) {
     console.warn('GOOGLE_PLACES_API_KEY not set, returning empty results')
@@ -66,9 +67,11 @@ export async function searchVenues(
   // Search for each type
   const searchPromises = searchTypes.map(async (type) => {
     const config = getSearchConfig(type)
-    const queryPart = config?.query || `${type} private events`
-    const category: EntityCategory = config?.category || 'Vendor'
-    const query = `${queryPart} in ${city}`
+    const queryPart = config?.query || `${type} restaurant private dining`
+    const category: EntityCategory = 'Restaurant'
+    // Include neighborhood in search if provided for more targeted results
+    const locationPart = neighborhood ? `${neighborhood}, ${city}` : city
+    const query = `${queryPart} in ${locationPart}`
 
     try {
       const response = await fetch(
@@ -107,10 +110,10 @@ export async function searchVenues(
   for (const { places, category, searchType } of results) {
     for (const place of places) {
       const normalizedName = normalizeName(place.displayName.text)
-      const normalizedWebsite = place.websiteUri 
+      const normalizedWebsite = place.websiteUri
         ? place.websiteUri.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')
         : null
-      
+
       // Skip if we've seen this place ID, similar name, or same website
       if (seenPlaceIds.has(place.id)) {
         continue
@@ -121,13 +124,13 @@ export async function searchVenues(
       if (normalizedWebsite && seenWebsites.has(normalizedWebsite)) {
         continue
       }
-      
+
       seenPlaceIds.add(place.id)
       seenNames.add(normalizedName)
       if (normalizedWebsite) {
         seenWebsites.add(normalizedWebsite)
       }
-      
+
       allResults.push({
         name: place.displayName.text,
         address: place.formattedAddress,

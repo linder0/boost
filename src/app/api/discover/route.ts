@@ -1,16 +1,10 @@
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { searchVenues } from '@/lib/discovery/google-places'
-import { findEmail } from '@/lib/discovery/hunter'
-import { 
-  DiscoveredVenue, 
-  estimatePriceRange, 
-  extractNeighborhood, 
-  generatePlaceholderEmail,
-  DEFAULT_VENUE_TYPES,
-  DEFAULT_VENDOR_TYPES,
+import {
+  discoverRestaurants,
+  DiscoveredRestaurant,
+  DiscoverySource,
 } from '@/lib/discovery'
-import { getSearchTypesForCategory, type EntityCategory } from '@/lib/entities'
 
 // Helper to send SSE events
 function sendEvent(
@@ -25,7 +19,16 @@ function sendEvent(
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
   const eventId = searchParams.get('eventId')
-  const categoryFilter = searchParams.get('category') as EntityCategory | null
+  const cuisine = searchParams.get('cuisine') || undefined
+  // Support both single 'neighborhood' and multiple 'neighborhoods' params
+  const neighborhoodsParam = searchParams.get('neighborhoods')
+  const singleNeighborhood = searchParams.get('neighborhood')
+  const neighborhoods = neighborhoodsParam
+    ? neighborhoodsParam.split(',').filter(Boolean)
+    : singleNeighborhood
+      ? [singleNeighborhood]
+      : undefined
+  const sourcesParam = searchParams.get('sources')
 
   if (!eventId) {
     return new Response('Missing eventId', { status: 400 })
@@ -52,48 +55,64 @@ export async function GET(request: NextRequest) {
     return new Response('Event not found', { status: 404 })
   }
 
+  // Parse sources from query param or use defaults
+  const sources: DiscoverySource[] = sourcesParam
+    ? sourcesParam.split(',') as DiscoverySource[]
+    : ['google_places', 'resy']
+
   // Create streaming response
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // Determine search types based on category filter
-        let searchTypes: string[]
-        let searchLabel: string
-
-        if (categoryFilter) {
-          // Filter to specific category only
-          searchTypes = getSearchTypesForCategory(categoryFilter)
-          searchLabel = categoryFilter === 'Venue' ? 'venues' : `${categoryFilter}s`.toLowerCase()
-          
-          if (searchTypes.length === 0) {
-            // Fallback to category name as search type if no config exists
-            searchTypes = [categoryFilter.toLowerCase()]
-          }
-        } else {
-          // Get all venue and vendor types from event or defaults
-          const venueTypes = event.constraints?.venue_types || DEFAULT_VENUE_TYPES
-          const vendorTypes = event.constraints?.vendor_types || DEFAULT_VENDOR_TYPES
-          searchTypes = [...venueTypes, ...vendorTypes]
-          searchLabel = 'venues and vendors'
-        }
-
         // Step 1: Log start
         sendEvent(controller, 'log', {
-          message: `Starting discovery for ${event.name}...`,
+          message: `Starting restaurant discovery for ${event.name}...`,
         })
         await sleep(300)
 
-        // Step 2: Search Google Places
+        // Step 2: Log sources
+        const sourceLabels = sources.map((s) => {
+          switch (s) {
+            case 'google_places': return 'Google Places'
+            case 'resy': return 'Resy'
+            case 'opentable': return 'OpenTable'
+            case 'beli': return 'Beli'
+            default: return s
+          }
+        })
         sendEvent(controller, 'log', {
-          message: `Searching for ${searchLabel}: ${searchTypes.join(', ')}...`,
+          message: `Searching: ${sourceLabels.join(', ')}...`,
         })
         await sleep(200)
 
-        const googleVenues = await searchVenues(event.city, searchTypes, 25)
+        // Step 3: Discover restaurants
+        // Use provided neighborhoods or fall back to event constraints
+        const searchNeighborhoods = neighborhoods?.length
+          ? neighborhoods
+          : event.constraints?.neighborhood
+            ? [event.constraints.neighborhood]
+            : undefined
 
-        if (googleVenues.length === 0) {
+        // Log which neighborhoods we're searching
+        if (searchNeighborhoods?.length) {
           sendEvent(controller, 'log', {
-            message: 'No results found from Google Places',
+            message: `Searching in: ${searchNeighborhoods.join(', ')}`,
+          })
+          await sleep(200)
+        }
+
+        const restaurants = await discoverRestaurants({
+          city: event.city || 'New York',
+          neighborhoods: searchNeighborhoods,
+          cuisine,
+          partySize: event.headcount,
+          sources,
+          limit: 30,
+        })
+
+        if (restaurants.length === 0) {
+          sendEvent(controller, 'log', {
+            message: 'No restaurants found. Try adjusting your search criteria.',
             level: 'warn',
           })
           sendEvent(controller, 'complete', { count: 0 })
@@ -101,122 +120,58 @@ export async function GET(request: NextRequest) {
           return
         }
 
-        // Count results by type
-        if (categoryFilter) {
-          sendEvent(controller, 'log', {
-            message: `Found ${googleVenues.length} ${searchLabel}`,
-            level: 'success',
-          })
-        } else {
-          const venueCount = googleVenues.filter((v) => v.category === 'Venue').length
-          const vendorCount = googleVenues.filter((v) => v.category !== 'Venue').length
-          sendEvent(controller, 'log', {
-            message: `Found ${venueCount} venues and ${vendorCount} vendors`,
-            level: 'success',
-          })
-        }
+        sendEvent(controller, 'log', {
+          message: `Found ${restaurants.length} restaurants`,
+          level: 'success',
+        })
         await sleep(200)
 
-        // Step 3: Stream results as they're discovered
-        const discoveredVenues: DiscoveredVenue[] = []
+        // Step 4: Stream results
+        const discoveredRestaurants: DiscoveredRestaurant[] = []
 
-        for (const venue of googleVenues) {
-          const priceRange = estimatePriceRange(venue.priceLevel)
+        for (const restaurant of restaurants) {
+          discoveredRestaurants.push(restaurant)
 
-          const baseVenue: DiscoveredVenue = {
-            name: venue.name,
-            category: venue.category, // Use category from Google Places search
-            email: generatePlaceholderEmail(venue.name),
-            city: event.city,
-            neighborhood: extractNeighborhood(venue.address),
-            venueTypes: [venue.searchType], // Use the search type
-            capacityMin: venue.category === 'Venue' ? 20 : 0,
-            capacityMax: venue.category === 'Venue' ? 150 : 0,
-            pricePerPersonMin: priceRange.min,
-            pricePerPersonMax: priceRange.max,
-            indoorOutdoor: 'both' as const,
-            catering: {
-              food: venue.category === 'Venue' || venue.category === 'Caterer',
-              drinks: venue.category === 'Venue',
-              externalAllowed: false,
-            },
-            latitude: venue.latitude,
-            longitude: venue.longitude,
-            googlePlaceId: venue.googlePlaceId,
-            discoverySource: 'google_places',
-            website: venue.website,
-            rating: venue.rating,
-          }
-
-          discoveredVenues.push(baseVenue)
-
-          // Stream the venue/vendor immediately
-          sendEvent(controller, 'venue', { data: baseVenue })
+          // Stream the restaurant immediately
+          sendEvent(controller, 'venue', { data: restaurantToLegacyFormat(restaurant) })
           await sleep(100) // Small delay for visual effect
         }
 
-        // Step 4: Enrich with emails
+        // Step 5: Summary by source
+        const bySource = restaurants.reduce((acc, r) => {
+          acc[r.discoverySource] = (acc[r.discoverySource] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
+
+        const sourceSummary = Object.entries(bySource)
+          .map(([source, count]) => `${count} from ${source}`)
+          .join(', ')
+
+        const withPrivateDining = restaurants.filter((r) => r.hasPrivateDining).length
+        const withEmails = restaurants.filter((r) => r.email && !r.email.includes('@placeholder.')).length
+
         sendEvent(controller, 'log', {
-          message: 'Looking up contact emails via Hunter.io...',
+          message: `Discovery complete! ${sourceSummary}`,
+          level: 'success',
         })
-        await sleep(300)
 
-        const venuesWithWebsites = googleVenues.filter((v) => v.website)
-        let emailsFound = 0
-
-        for (let i = 0; i < venuesWithWebsites.length; i++) {
-          const venue = venuesWithWebsites[i]
-          const discoveredVenue = discoveredVenues.find(
-            (v) => v.googlePlaceId === venue.googlePlaceId
-          )
-
-          if (!discoveredVenue || !venue.website) continue
-
-          try {
-            const emailResult = await findEmail(venue.website)
-
-            if (emailResult) {
-              discoveredVenue.email = emailResult.email
-              discoveredVenue.emailConfidence = emailResult.confidence
-              emailsFound++
-
-              sendEvent(controller, 'venue_updated', {
-                data: discoveredVenue,
-              })
-
-              sendEvent(controller, 'log', {
-                message: `✓ ${venue.name} - ${emailResult.email} (${emailResult.confidence}% confidence)`,
-                level: 'success',
-              })
-            }
-          } catch (err) {
-            // Silently continue if email lookup fails
-          }
-
-          // Small delay between Hunter requests
-          if (i < venuesWithWebsites.length - 1) {
-            await sleep(150)
-          }
+        if (withPrivateDining > 0) {
+          sendEvent(controller, 'log', {
+            message: `${withPrivateDining} with verified private dining`,
+            level: 'info',
+          })
         }
 
-        // Step 5: Complete
-        if (categoryFilter) {
+        if (withEmails > 0) {
           sendEvent(controller, 'log', {
-            message: `Discovery complete! Found ${discoveredVenues.length} ${searchLabel}, ${emailsFound} verified emails`,
-            level: 'success',
-          })
-        } else {
-          const finalVenueCount = discoveredVenues.filter((v) => v.category === 'Venue').length
-          const finalVendorCount = discoveredVenues.filter((v) => v.category !== 'Venue').length
-          sendEvent(controller, 'log', {
-            message: `Discovery complete! Found ${finalVenueCount} venues, ${finalVendorCount} vendors, ${emailsFound} verified emails`,
-            level: 'success',
+            message: `${withEmails} with verified contact emails`,
+            level: 'info',
           })
         }
 
         sendEvent(controller, 'complete', {
-          count: discoveredVenues.length,
-          venues: discoveredVenues,
+          count: discoveredRestaurants.length,
+          venues: discoveredRestaurants.map(restaurantToLegacyFormat),
         })
 
         controller.close()
@@ -241,4 +196,46 @@ export async function GET(request: NextRequest) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Convert new restaurant format to legacy venue format for UI compatibility
+ */
+function restaurantToLegacyFormat(restaurant: DiscoveredRestaurant): Record<string, unknown> {
+  return {
+    name: restaurant.name,
+    category: restaurant.category,
+    email: restaurant.email,
+    city: restaurant.city,
+    neighborhood: restaurant.neighborhood,
+    venueTypes: ['restaurant'],
+    capacityMin: restaurant.capacityMin,
+    capacityMax: restaurant.capacityMax,
+    pricePerPersonMin: restaurant.pricePerPersonMin,
+    pricePerPersonMax: restaurant.pricePerPersonMax,
+    indoorOutdoor: 'both',
+    catering: {
+      food: true,
+      drinks: true,
+      externalAllowed: false,
+    },
+    latitude: restaurant.latitude,
+    longitude: restaurant.longitude,
+    googlePlaceId: restaurant.googlePlaceId,
+    emailConfidence: restaurant.emailConfidence,
+    discoverySource: restaurant.discoverySource,
+    website: restaurant.website,
+    rating: restaurant.rating,
+    phone: restaurant.phone,
+    // Restaurant-specific fields
+    cuisine: restaurant.cuisine,
+    priceLevel: restaurant.priceLevel,
+    hasPrivateDining: restaurant.hasPrivateDining,
+    privateDiningCapacityMin: restaurant.privateDiningCapacityMin,
+    privateDiningCapacityMax: restaurant.privateDiningCapacityMax,
+    privateDiningMinimum: restaurant.privateDiningMinimum,
+    resyVenueId: restaurant.resyVenueId,
+    opentableId: restaurant.opentableId,
+    beliRank: restaurant.beliRank,
+  }
 }

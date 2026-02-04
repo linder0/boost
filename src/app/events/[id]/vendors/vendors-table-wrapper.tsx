@@ -10,9 +10,24 @@ import { getVendorDetail } from '@/app/actions/vendors'
 interface VendorsTableWrapperProps {
   vendors: VendorWithThread[]
   eventId: string
+  eventName?: string
+  city?: string
+  headcount?: number
+  budget?: number
+  neighborhoods?: string[]
+  cuisines?: string[]
 }
 
-export function VendorsTableWrapper({ vendors, eventId }: VendorsTableWrapperProps) {
+export function VendorsTableWrapper({
+  vendors,
+  eventId,
+  eventName,
+  city,
+  headcount,
+  budget,
+  neighborhoods,
+  cuisines,
+}: VendorsTableWrapperProps) {
   const [selectedVendor, setSelectedVendor] = useState<VendorWithThread | null>(null)
   const [messages, setMessages] = useState<MessageWithParsed[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,7 +55,7 @@ export function VendorsTableWrapper({ vendors, eventId }: VendorsTableWrapperPro
 
   return (
     <>
-      <VendorsOverviewMap 
+      <VendorsOverviewMap
         vendors={vendors}
         onVendorClick={setSelectedVendor}
       />
@@ -49,6 +64,12 @@ export function VendorsTableWrapper({ vendors, eventId }: VendorsTableWrapperPro
         vendors={vendors}
         eventId={eventId}
         onVendorClick={setSelectedVendor}
+        eventName={eventName}
+        city={city}
+        headcount={headcount}
+        budget={budget}
+        neighborhoods={neighborhoods}
+        cuisines={cuisines}
       />
 
       <VendorDrawer

@@ -1,13 +1,12 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import { Search } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
+import { PillButton } from '@/components/ui/pill-button'
 import {
   Table,
   TableBody,
@@ -17,30 +16,36 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { createVendorsFromDiscovery } from '@/app/actions/vendors'
-// Note: Outreach is simulated on the vendors page for demo purposes
-import { DemoVenue, demoVenueToVendor } from '@/lib/demo/venues'
-import { formatCurrency } from '@/lib/utils'
-import { DiscoveredVenue } from '@/lib/discovery'
+import { DemoRestaurant, demoRestaurantToVendor, DEMO_RESTAURANTS } from '@/lib/demo/restaurants'
 import { DiscoveryLog, LogEntry } from '@/components/discovery-log'
-import { sortCategories, groupByCategory, getCategoryLabel, type EntityCategory } from '@/lib/entities'
+import { CUISINE_TYPES } from '@/lib/entities'
+import { NeighborhoodPicker } from '@/components/mapbox'
+import { Users, DollarSign, MapPin, ExternalLink } from 'lucide-react'
 
-type VenueItem = DemoVenue | DiscoveredVenue
-
-interface VenueDiscoveryProps {
+interface RestaurantDiscoveryProps {
   eventId: string
   eventName: string
   city: string
   headcount: number
   budget: number
-  initialVenues?: VenueItem[]
-  discoverySource?: 'google_places' | 'demo'
   existingVendorEmails?: string[]
-  categoryFilter?: EntityCategory
+  initialNeighborhoods?: string[]
+  initialCuisines?: string[]
 }
 
-// Type guard to check if a venue is a DiscoveredVenue
-function isDiscoveredVenue(venue: VenueItem): venue is DiscoveredVenue {
-  return 'discoverySource' in venue
+// Extended restaurant type with discovery metadata
+interface DiscoveredRestaurant extends DemoRestaurant {
+  discoverySource?: string
+  resyVenueId?: string
+  opentableId?: string
+  beliRank?: number
+  // Location fields
+  address?: string
+  borough?: string
+  // Reservation fields
+  reservationPlatform?: 'resy' | 'opentable' | 'yelp' | 'direct'
+  reservationUrl?: string
+  hasOnlineReservation?: boolean
 }
 
 // Generate unique ID for logs
@@ -49,31 +54,50 @@ function generateLogId(): string {
   return `log-${Date.now()}-${logIdCounter++}`
 }
 
+// Discovery source options
+const DISCOVERY_SOURCES = [
+  { id: 'google_places', label: 'Google', enabled: true },
+  { id: 'resy', label: 'Resy', enabled: true },
+  { id: 'opentable', label: 'OpenTable', enabled: true },
+  { id: 'beli', label: 'Beli', enabled: false }, // Requires Clawdbot
+] as const
+
 export function VenueDiscovery({
   eventId,
   eventName,
   city,
   headcount,
   budget,
-  initialVenues = [],
-  discoverySource,
   existingVendorEmails = [],
-  categoryFilter,
-}: VenueDiscoveryProps) {
-  // Create a Set for O(1) lookup of existing vendors
+  initialNeighborhoods,
+  initialCuisines,
+}: RestaurantDiscoveryProps) {
   const existingEmailsSet = new Set(existingVendorEmails.map(e => e.toLowerCase()))
   const router = useRouter()
-  const [venues, setVenues] = useState<VenueItem[]>(initialVenues)
-  const [selectedVenues, setSelectedVenues] = useState<Set<string>>(
-    new Set(initialVenues.map((v) => v.email))
-  )
+
+  const [restaurants, setRestaurants] = useState<DiscoveredRestaurant[]>([])
+  const [selectedRestaurants, setSelectedRestaurants] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+
   // Discovery state
   const [isDiscovering, setIsDiscovering] = useState(false)
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [hasDiscovered, setHasDiscovered] = useState(initialVenues.length > 0)
+  const [hasDiscovered, setHasDiscovered] = useState(false)
+
+  // Ref to prevent double-execution in React 18 StrictMode
+  const discoveryInitiated = useRef(false)
+
+  // Filters - initialize with event preferences if available
+  const [selectedCuisine, setSelectedCuisine] = useState<string | null>(
+    initialCuisines?.length ? initialCuisines[0] : null
+  )
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(
+    new Set(['google_places', 'resy'])
+  )
+  const [selectedNeighborhoods, setSelectedNeighborhoods] = useState<string[]>(
+    initialNeighborhoods || []
+  )
 
   const addLog = useCallback((message: string, level?: LogEntry['level']) => {
     setLogs((prev) => [
@@ -87,25 +111,36 @@ export function VenueDiscovery({
     ])
   }, [])
 
-  // Auto-start discovery when page loads (if no initial venues)
+  // Auto-start discovery when page loads (with StrictMode protection)
   useEffect(() => {
-    if (initialVenues.length === 0 && !hasDiscovered) {
+    if (!hasDiscovered && !discoveryInitiated.current) {
+      discoveryInitiated.current = true
       startDiscovery()
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const startDiscovery = useCallback(async () => {
     setIsDiscovering(true)
-    setVenues([])
-    setSelectedVenues(new Set())
+    setRestaurants([])
+    setSelectedRestaurants(new Set())
     setLogs([])
     setError(null)
 
     try {
-      const url = categoryFilter 
-        ? `/api/discover?eventId=${eventId}&category=${encodeURIComponent(categoryFilter)}`
-        : `/api/discover?eventId=${eventId}`
-      const response = await fetch(url)
+      // Build query params
+      const params = new URLSearchParams({
+        eventId,
+        sources: Array.from(selectedSources).join(','),
+      })
+      if (selectedCuisine) {
+        params.set('cuisine', selectedCuisine)
+      }
+      if (selectedNeighborhoods.length > 0) {
+        // Pass all selected neighborhoods
+        params.set('neighborhoods', selectedNeighborhoods.join(','))
+      }
+
+      const response = await fetch(`/api/discover?${params}`)
 
       if (!response.ok) {
         throw new Error('Failed to start discovery')
@@ -137,41 +172,38 @@ export function VenueDiscovery({
                   addLog(event.message, event.level)
                   break
 
-                case 'venue':
-                  // Add venue with deduplication by email and name
-                  setVenues((prev) => {
-                    const newVenue = event.data as DiscoveredVenue
-                    const emailLower = newVenue.email.toLowerCase()
-                    const nameLower = newVenue.name.toLowerCase().replace(/[^a-z0-9]/g, '')
-                    
-                    // Check if we already have this venue
-                    const isDuplicate = prev.some((v) => {
-                      const existingEmail = v.email.toLowerCase()
-                      const existingName = v.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+                case 'venue': {
+                  // Add restaurant with deduplication by email and name
+                  const newRestaurant = event.data as DiscoveredRestaurant
+                  setRestaurants((prev) => {
+                    const emailLower = newRestaurant.email.toLowerCase()
+                    const nameLower = newRestaurant.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+                    const isDuplicate = prev.some((r) => {
+                      const existingEmail = r.email.toLowerCase()
+                      const existingName = r.name.toLowerCase().replace(/[^a-z0-9]/g, '')
                       return existingEmail === emailLower || existingName === nameLower
                     })
-                    
-                    if (isDuplicate) {
-                      return prev
-                    }
-                    return [...prev, newVenue]
+
+                    if (isDuplicate) return prev
+                    return [...prev, newRestaurant]
                   })
                   break
+                }
 
                 case 'venue_updated':
-                  setVenues((prev) =>
-                    prev.map((v) =>
-                      v.name === event.data.name ? event.data : v
+                  setRestaurants((prev) =>
+                    prev.map((r) =>
+                      r.name === event.data.name ? event.data : r
                     )
                   )
                   break
 
                 case 'complete':
                   setHasDiscovered(true)
-                  // Select all venues after discovery completes
-                  setVenues((currentVenues) => {
-                    setSelectedVenues(new Set(currentVenues.map((v) => v.email)))
-                    return currentVenues
+                  setRestaurants((current) => {
+                    setSelectedRestaurants(new Set(current.map((r) => r.email)))
+                    return current
                   })
                   break
 
@@ -192,29 +224,41 @@ export function VenueDiscovery({
     } finally {
       setIsDiscovering(false)
     }
-  }, [eventId, addLog, venues, categoryFilter])
+  }, [eventId, addLog, selectedSources, selectedCuisine, selectedNeighborhoods])
 
-  const toggleVenue = (email: string) => {
-    const newSelected = new Set(selectedVenues)
+  const toggleRestaurant = (email: string) => {
+    const newSelected = new Set(selectedRestaurants)
     if (newSelected.has(email)) {
       newSelected.delete(email)
     } else {
       newSelected.add(email)
     }
-    setSelectedVenues(newSelected)
+    setSelectedRestaurants(newSelected)
   }
 
   const toggleAll = () => {
-    if (selectedVenues.size === venues.length) {
-      setSelectedVenues(new Set())
+    if (selectedRestaurants.size === restaurants.length) {
+      setSelectedRestaurants(new Set())
     } else {
-      setSelectedVenues(new Set(venues.map((v) => v.email)))
+      setSelectedRestaurants(new Set(restaurants.map((r) => r.email)))
     }
   }
 
-  const handleAddVendors = async (startOutreach: boolean) => {
-    if (selectedVenues.size === 0) {
-      setError('Please select at least one venue')
+  const toggleSource = (sourceId: string) => {
+    const newSources = new Set(selectedSources)
+    if (newSources.has(sourceId)) {
+      if (newSources.size > 1) { // Keep at least one source selected
+        newSources.delete(sourceId)
+      }
+    } else {
+      newSources.add(sourceId)
+    }
+    setSelectedSources(newSources)
+  }
+
+  const handleAddRestaurants = async () => {
+    if (selectedRestaurants.size === 0) {
+      setError('Please select at least one restaurant')
       return
     }
 
@@ -222,48 +266,44 @@ export function VenueDiscovery({
     setError(null)
 
     try {
-      const vendorsToCreate = venues
-        .filter((v) => selectedVenues.has(v.email))
-        .map(demoVenueToVendor)
+      const restaurantsToCreate = restaurants
+        .filter((r) => selectedRestaurants.has(r.email))
+        .map(demoRestaurantToVendor)
 
-      await createVendorsFromDiscovery(eventId, vendorsToCreate)
-
-      // Note: Outreach is now simulated on the vendors page for demo purposes
-      // The startOutreach parameter is ignored - users can click "Start Outreach" 
-      // on the vendors page to see the simulation
-      
+      await createVendorsFromDiscovery(eventId, restaurantsToCreate)
       router.push(`/events/${eventId}/vendors`)
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to add vendors'
+      const message = err instanceof Error ? err.message : 'Failed to add restaurants'
       setError(message)
     } finally {
       setLoading(false)
     }
   }
 
-  // Dynamic heading based on category filter
-  const headingText = categoryFilter 
-    ? `Discover ${getCategoryLabel(categoryFilter, true)}`
-    : 'Discover Venues & Vendors'
-  
-  const descriptionText = categoryFilter
-    ? `Find ${getCategoryLabel(categoryFilter, true).toLowerCase()} for your event in ${city}`
-    : `Find venues and vendors for your event in ${city}`
+  // Format capacity display
+  const formatCapacity = (restaurant: DiscoveredRestaurant): string => {
+    const min = restaurant.privateDiningCapacityMin
+    const max = restaurant.privateDiningCapacityMax
+    if (min && max) return `${min}-${max}`
+    if (max) return `${max}`
+    return `${restaurant.capacityMin}-${restaurant.capacityMax}`
+  }
+
+  // Format minimum spend display
+  const formatMinimum = (restaurant: DiscoveredRestaurant): string => {
+    const min = restaurant.privateDiningMinimum
+    if (!min) return '-'
+    return `$${min.toLocaleString()}`
+  }
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">{headingText}</h1>
-            {hasDiscovered && discoverySource === 'google_places' && (
-              <Badge variant="default" className="bg-blue-600">
-                Google Places
-              </Badge>
-            )}
-          </div>
+          <h1 className="text-2xl font-bold">Discover Restaurants</h1>
           <p className="text-muted-foreground">
-            {descriptionText}
+            Find private dining options in {city} for {headcount} guests
           </p>
         </div>
         <Button
@@ -271,21 +311,84 @@ export function VenueDiscovery({
           disabled={isDiscovering}
           size="lg"
         >
-          {isDiscovering ? 'Discovering...' : 'Discover'}
+          {isDiscovering ? 'Discovering...' : 'Search Again'}
         </Button>
       </div>
 
-      {/* Discovery Log - show when discovering or has logs */}
+      {/* Filters */}
+      <Card>
+        <CardContent className="pt-4 space-y-4">
+          {/* Discovery Sources */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Search Sources</label>
+            <div className="flex flex-wrap gap-2">
+              {DISCOVERY_SOURCES.map((source) => (
+                <PillButton
+                  key={source.id}
+                  selected={selectedSources.has(source.id)}
+                  onClick={() => toggleSource(source.id)}
+                  disabled={!source.enabled || isDiscovering}
+                >
+                  {source.label}
+                  {!source.enabled && <span className="ml-1 text-xs opacity-50">(soon)</span>}
+                </PillButton>
+              ))}
+            </div>
+          </div>
+
+          {/* Cuisine Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Cuisine (optional)</label>
+            <div className="flex flex-wrap gap-2">
+              <PillButton
+                selected={selectedCuisine === null}
+                onClick={() => setSelectedCuisine(null)}
+                disabled={isDiscovering}
+              >
+                All
+              </PillButton>
+              {CUISINE_TYPES.slice(0, 8).map((cuisine) => (
+                <PillButton
+                  key={cuisine}
+                  selected={selectedCuisine === cuisine}
+                  onClick={() => setSelectedCuisine(cuisine)}
+                  disabled={isDiscovering}
+                >
+                  {cuisine}
+                </PillButton>
+              ))}
+            </div>
+          </div>
+
+          {/* Neighborhood Filter */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <MapPin className="w-4 h-4" />
+              Neighborhood (optional)
+            </label>
+            <p className="text-xs text-muted-foreground mb-2">
+              Click neighborhoods on the map to focus your restaurant search
+            </p>
+            <NeighborhoodPicker
+              selected={selectedNeighborhoods}
+              onChange={setSelectedNeighborhoods}
+              height="300px"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Discovery Log */}
       {(isDiscovering || logs.length > 0) && (
         <DiscoveryLog logs={logs} isActive={isDiscovering} />
       )}
 
-      {/* Venues Table - Grouped by Category */}
-      {venues.length > 0 && (
+      {/* Results Table */}
+      {restaurants.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-lg font-semibold">
-              {selectedVenues.size} of {venues.length} selected
+              {selectedRestaurants.size} of {restaurants.length} selected
               {isDiscovering && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
                   (streaming...)
@@ -293,149 +396,137 @@ export function VenueDiscovery({
               )}
             </p>
             <Button variant="ghost" size="sm" onClick={toggleAll}>
-              {selectedVenues.size === venues.length ? 'Deselect All' : 'Select All'}
+              {selectedRestaurants.size === restaurants.length ? 'Deselect All' : 'Select All'}
             </Button>
           </div>
-          
-          {/* Group venues by category */}
-          {(() => {
-            // Group venues by category using shared utility
-            const grouped = groupByCategory(venues)
-            
-            // Sort categories using shared utility
-            const sortedCats = sortCategories(Object.keys(grouped))
-            
-            return sortedCats.map(category => {
-              const categoryVenues = grouped[category]
-              const categorySelected = categoryVenues.filter(v => selectedVenues.has(v.email)).length
-              
-              return (
-                <div key={category} className="mb-4 last:mb-0">
-                  <div className="mb-2 flex items-center gap-2">
-                    <h4 className="text-sm font-medium text-muted-foreground">
-                      {category}s ({categoryVenues.length})
-                    </h4>
-                    {categorySelected > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {categorySelected} selected
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">
-                            <Checkbox
-                              checked={categorySelected === categoryVenues.length}
-                              onCheckedChange={() => {
-                                const allSelected = categorySelected === categoryVenues.length
-                                const newSelected = new Set(selectedVenues)
-                                categoryVenues.forEach(v => {
-                                  if (allSelected) {
-                                    newSelected.delete(v.email)
-                                  } else {
-                                    newSelected.add(v.email)
-                                  }
-                                })
-                                setSelectedVenues(newSelected)
-                              }}
-                              aria-label={`Select all ${category}s`}
-                            />
-                          </TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Contact Email</TableHead>
-                          <TableHead>Price Range</TableHead>
-                          <TableHead>Location</TableHead>
-                          <TableHead>Status</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {categoryVenues.map((venue, index) => {
-                          const isAlreadyAdded = existingEmailsSet.has(venue.email.toLowerCase())
-                          return (
-                            <TableRow
-                              key={`${venue.email}-${index}`}
-                              className={`cursor-pointer animate-in fade-in slide-in-from-top-2 duration-300 ${isAlreadyAdded ? 'opacity-60' : ''}`}
-                              style={{ animationDelay: `${index * 50}ms` }}
-                              onClick={() => !isAlreadyAdded && toggleVenue(venue.email)}
+
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={selectedRestaurants.size === restaurants.length}
+                      onCheckedChange={toggleAll}
+                      aria-label="Select all"
+                    />
+                  </TableHead>
+                  <TableHead>Restaurant</TableHead>
+                  <TableHead>Cuisine</TableHead>
+                  <TableHead>Capacity</TableHead>
+                  <TableHead>Minimum</TableHead>
+                  <TableHead>Location</TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {restaurants.map((restaurant, index) => {
+                  const isAlreadyAdded = existingEmailsSet.has(restaurant.email.toLowerCase())
+                  return (
+                    <TableRow
+                      key={`${restaurant.email}-${index}`}
+                      className={`cursor-pointer animate-in fade-in slide-in-from-top-2 duration-300 ${isAlreadyAdded ? 'opacity-60' : ''}`}
+                      style={{ animationDelay: `${index * 50}ms` }}
+                      onClick={() => !isAlreadyAdded && toggleRestaurant(restaurant.email)}
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedRestaurants.has(restaurant.email)}
+                          onCheckedChange={() => toggleRestaurant(restaurant.email)}
+                          disabled={isAlreadyAdded}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{restaurant.name}</span>
+                            {restaurant.hasPrivateDining && (
+                              <Badge variant="outline" className="text-xs">
+                                Private Dining
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{'$'.repeat(restaurant.priceLevel || 3)}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">{restaurant.cuisine || '-'}</span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Users className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-sm">{formatCapacity(restaurant)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <DollarSign className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-sm">{formatMinimum(restaurant)}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-0.5">
+                          <span className="text-sm">
+                            {restaurant.neighborhood || restaurant.borough || restaurant.city}
+                          </span>
+                          {restaurant.address && (
+                            <span
+                              className="text-xs text-muted-foreground block truncate max-w-[150px]"
+                              title={restaurant.address}
                             >
-                              <TableCell>
-                                <Checkbox
-                                  checked={selectedVenues.has(venue.email)}
-                                  onCheckedChange={() => toggleVenue(venue.email)}
-                                  disabled={isAlreadyAdded}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <p className="font-medium">{venue.name}</p>
-                                    {isDiscoveredVenue(venue) && venue.rating && (
-                                      <span className="flex items-center gap-0.5 text-xs text-amber-600">
-                                        <span>★</span>
-                                        <span>{venue.rating.toFixed(1)}</span>
-                                      </span>
-                                    )}
-                                    {isDiscoveredVenue(venue) && venue.website && (
-                                      <a
-                                        href={venue.website}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-blue-600 hover:text-blue-800 text-xs"
-                                      >
-                                        ↗
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-1.5">
-                                  <p className="text-sm">{venue.email}</p>
-                                  {isDiscoveredVenue(venue) && venue.emailConfidence && (
-                                    <Badge
-                                      variant={venue.emailConfidence >= 80 ? 'default' : 'secondary'}
-                                      className="text-[10px] px-1 py-0"
-                                    >
-                                      {venue.emailConfidence}%
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                ${venue.pricePerPersonMin}-${venue.pricePerPersonMax}/pp
-                              </TableCell>
-                              <TableCell>
-                                <span className="text-sm">{venue.neighborhood || venue.city}</span>
-                              </TableCell>
-                              <TableCell>
-                                {isAlreadyAdded ? (
-                                  <Badge variant="outline" className="text-green-600 border-green-300">
-                                    Added
-                                  </Badge>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">New</span>
-                                )}
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <Link 
-                    href={`/events/${eventId}/vendors/discover?category=${encodeURIComponent(category)}`}
-                    className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Search className="h-3.5 w-3.5" />
-                    Find more {getCategoryLabel(category as EntityCategory, true).toLowerCase()}
-                  </Link>
-                </div>
-              )
-            })
-          })()}
+                              {restaurant.address.split(',')[0]}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {restaurant.discoverySource && (
+                            <Badge variant="secondary" className="text-xs">
+                              {restaurant.discoverySource === 'google_places' ? 'Google' :
+                               restaurant.discoverySource === 'resy' ? 'Resy' :
+                               restaurant.discoverySource === 'opentable' ? 'OpenTable' :
+                               restaurant.discoverySource === 'beli' ? 'Beli' :
+                               restaurant.discoverySource}
+                            </Badge>
+                          )}
+                          {restaurant.beliRank && (
+                            <Badge variant="outline" className="text-xs">
+                              #{restaurant.beliRank}
+                            </Badge>
+                          )}
+                          {restaurant.reservationUrl && (
+                            <a
+                              href={restaurant.reservationUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-muted-foreground hover:text-foreground"
+                              title="Book on Resy"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {isAlreadyAdded ? (
+                          <Badge variant="outline" className="text-green-600 border-green-300">
+                            Added
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">New</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
 
           {error && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
@@ -443,33 +534,33 @@ export function VenueDiscovery({
             </div>
           )}
 
-          {/* Action Buttons - only show when discovery is complete */}
-          {!isDiscovering && venues.length > 0 && (
-            <>
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => handleAddVendors(true)}
-                  disabled={loading || selectedVenues.size === 0}
-                  className="flex-1"
-                >
-                  {loading ? 'Adding...' : `Add ${selectedVenues.size} ${selectedVenues.size === 1 ? 'Venue' : 'Venues'} & Start Outreach`}
-                </Button>
-              </div>
-            </>
+          {/* Action Button */}
+          {!isDiscovering && restaurants.length > 0 && (
+            <Button
+              onClick={handleAddRestaurants}
+              disabled={loading || selectedRestaurants.size === 0}
+              className="w-full"
+            >
+              {loading ? 'Adding...' : `Add ${selectedRestaurants.size} Restaurant${selectedRestaurants.size === 1 ? '' : 's'}`}
+            </Button>
           )}
         </div>
       )}
 
-
       {/* No results state */}
-      {!isDiscovering && venues.length === 0 && hasDiscovered && (
+      {!isDiscovering && restaurants.length === 0 && hasDiscovered && (
         <Card>
           <CardContent className="py-12 text-center">
             <p className="text-muted-foreground">
-              No venues or vendors found matching your criteria in {city}.
+              No restaurants found for {headcount} guests in{' '}
+              {selectedNeighborhoods.length > 0
+                ? `${selectedNeighborhoods.join(', ')} (${city})`
+                : city}
+              {budget ? ` with a $${budget.toLocaleString()} budget` : ''}
+              {selectedCuisine ? ` serving ${selectedCuisine} cuisine` : ''}.
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Try adjusting your event settings or manually import vendors.
+              Try selecting different neighborhoods, adjusting your filters, or manually import restaurants.
             </p>
             <div className="mt-4 flex justify-center gap-2">
               <Button variant="outline" onClick={() => router.push(`/events/${eventId}`)}>

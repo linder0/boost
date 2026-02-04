@@ -1,40 +1,40 @@
 // Database types and enums
-export type VendorStatus = 
-  | 'NOT_CONTACTED' 
-  | 'WAITING' 
-  | 'PARSED' 
-  | 'ESCALATION' 
-  | 'DONE' 
-  | 'VIABLE' 
+export type VendorStatus =
+  | 'NOT_CONTACTED'
+  | 'WAITING'
+  | 'PARSED'
+  | 'ESCALATION'
+  | 'DONE'
+  | 'VIABLE'
   | 'REJECTED';
 
-export type DecisionOutcome = 
-  | 'VIABLE' 
-  | 'NEGOTIATE' 
-  | 'REJECT' 
+export type DecisionOutcome =
+  | 'VIABLE'
+  | 'NEGOTIATE'
+  | 'REJECT'
   | 'ESCALATE';
 
-export type ConfidenceLevel = 
-  | 'HIGH' 
-  | 'MEDIUM' 
+export type ConfidenceLevel =
+  | 'HIGH'
+  | 'MEDIUM'
   | 'LOW';
 
-export type NextActionType = 
-  | 'AUTO' 
-  | 'WAITING' 
+export type NextActionType =
+  | 'AUTO'
+  | 'WAITING'
   | 'NEEDS_YOU';
 
-export type MessageSender = 
-  | 'SYSTEM' 
-  | 'VENDOR' 
+export type MessageSender =
+  | 'SYSTEM'
+  | 'VENDOR'
   | 'HUMAN';
 
-export type LogEventType = 
-  | 'OUTREACH' 
-  | 'FOLLOW_UP' 
-  | 'REPLY' 
-  | 'PARSE' 
-  | 'DECISION' 
+export type LogEventType =
+  | 'OUTREACH'
+  | 'FOLLOW_UP'
+  | 'REPLY'
+  | 'PARSE'
+  | 'DECISION'
   | 'ESCALATION'
   | 'DISCOVERY'
   | 'APPROVAL'
@@ -47,8 +47,8 @@ export type EscalationCategory =
   | 'budget_edge'
   | 'custom';
 
-export type ChatRole = 
-  | 'user' 
+export type ChatRole =
+  | 'user'
   | 'assistant';
 
 // Database table types
@@ -69,6 +69,10 @@ export interface Event {
     noise?: boolean;
     indoor_outdoor?: 'indoor' | 'outdoor' | 'either';
     neighborhood?: string;
+    neighborhoods?: string[];
+    cuisines?: string[];
+    requires_private_dining?: boolean;
+    dietary_restrictions?: string;
     time_frame?: 'morning' | 'afternoon' | 'evening' | 'night';
     venue_types?: string[];
     catering?: {
@@ -84,7 +88,7 @@ export interface Event {
   updated_at: string;
 }
 
-export type DiscoverySourceType = 'google_places' | 'manual' | 'csv' | 'demo';
+export type DiscoverySourceType = 'google_places' | 'resy' | 'opentable' | 'beli' | 'manual' | 'csv' | 'demo';
 
 export interface Vendor {
   id: string;
@@ -103,6 +107,15 @@ export interface Vendor {
   google_place_id?: string | null;
   phone?: string | null;
   discovery_source?: DiscoverySourceType | null;
+  // Restaurant-specific fields
+  cuisine?: string | null;
+  private_dining_capacity_min?: number | null;
+  private_dining_capacity_max?: number | null;
+  private_dining_minimum?: number | null;
+  resy_venue_id?: string | null;
+  opentable_id?: string | null;
+  beli_rank?: number | null;
+  has_private_dining?: boolean | null;
   created_at: string;
   updated_at: string;
 }

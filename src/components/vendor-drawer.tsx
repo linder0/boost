@@ -75,6 +75,8 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
               name={vendor.name}
               rating={vendor.rating}
               website={vendor.website}
+              discoverySource={vendor.discovery_source}
+              showDiscoveryBadge
             />
             <div className="flex items-center gap-3">
               {thread && (
@@ -98,8 +100,12 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
           </DialogTitle>
           <DialogDescription asChild>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-              <span>{vendor.category}</span>
-              <span>•</span>
+              {vendor.cuisine && (
+                <>
+                  <span className="font-medium">{vendor.cuisine}</span>
+                  <span>•</span>
+                </>
+              )}
               <VendorEmailDisplay
                 email={vendor.contact_email}
                 emailConfidence={vendor.email_confidence}
@@ -110,6 +116,23 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
                   <a href={`tel:${vendor.phone}`} className="hover:underline">
                     {vendor.phone}
                   </a>
+                </>
+              )}
+              {vendor.has_private_dining && (
+                <>
+                  <span>•</span>
+                  <Badge variant="outline" className="text-xs">
+                    Private Dining
+                    {vendor.private_dining_capacity_min && vendor.private_dining_capacity_max && (
+                      <span className="ml-1">({vendor.private_dining_capacity_min}-{vendor.private_dining_capacity_max})</span>
+                    )}
+                  </Badge>
+                </>
+              )}
+              {vendor.private_dining_minimum && (
+                <>
+                  <span>•</span>
+                  <span>Min: ${vendor.private_dining_minimum.toLocaleString()}</span>
                 </>
               )}
             </div>
