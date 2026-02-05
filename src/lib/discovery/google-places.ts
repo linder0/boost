@@ -293,3 +293,86 @@ export async function geocodeVenueByName(
     return null
   }
 }
+
+/**
+ * Enrich a venue with Google Places data using name and address for better matching
+ * Returns enriched fields or null if not found
+ */
+export async function enrichVenueFromGooglePlaces(
+  name: string,
+  address?: string,
+  city: string = 'New York'
+): Promise<{
+  website?: string
+  phone?: string
+  rating?: number
+  priceLevel?: number
+  googlePlaceId?: string
+  latitude?: number
+  longitude?: number
+} | null> {
+  if (!GOOGLE_PLACES_API_KEY) {
+    console.warn('[Enrich] GOOGLE_PLACES_API_KEY not set')
+    return null
+  }
+
+  // Build query with address for better matching
+  const addressPart = address ? ` ${address}` : ''
+  const query = `${name}${addressPart} ${city}`
+
+  try {
+    const response = await fetch(
+      'https://places.googleapis.com/v1/places:searchText',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_PLACES_API_KEY,
+          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.websiteUri,places.nationalPhoneNumber,places.rating,places.priceLevel',
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          maxResultCount: 3,
+        }),
+      }
+    )
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`[Enrich] Google Places API error for "${name}":`, errorText)
+      return null
+    }
+
+    const data: PlacesTextSearchResponse = await response.json()
+    const places = data.places || []
+
+    if (places.length === 0) {
+      console.log(`[Enrich] No results found for "${name}"`)
+      return null
+    }
+
+    // Find best match by comparing normalized names
+    const normalizedSearchName = normalizeName(name)
+    const bestMatch = places.find((place) => {
+      const normalizedPlaceName = normalizeName(place.displayName.text)
+      return normalizedPlaceName === normalizedSearchName ||
+        normalizedPlaceName.includes(normalizedSearchName) ||
+        normalizedSearchName.includes(normalizedPlaceName)
+    }) || places[0]
+
+    console.log(`[Enrich] Found "${bestMatch.displayName.text}" for "${name}"`)
+
+    return {
+      website: bestMatch.websiteUri,
+      phone: bestMatch.nationalPhoneNumber,
+      rating: bestMatch.rating,
+      priceLevel: mapPriceLevel(bestMatch.priceLevel),
+      googlePlaceId: bestMatch.id,
+      latitude: bestMatch.location?.latitude,
+      longitude: bestMatch.location?.longitude,
+    }
+  } catch (error) {
+    console.error(`[Enrich] Error enriching "${name}":`, error)
+    return null
+  }
+}

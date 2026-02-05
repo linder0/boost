@@ -334,8 +334,8 @@ export async function getEntitiesByEvent(eventId: string): Promise<EntityWithEve
   // Flatten the event_entity array to a single object
   return (data ?? []).map((entity) => ({
     ...entity,
-    event_entity: Array.isArray(entity.event_entity) 
-      ? entity.event_entity[0] 
+    event_entity: Array.isArray(entity.event_entity)
+      ? entity.event_entity[0]
       : entity.event_entity
   })) as EntityWithEventStatus[]
 }
@@ -479,4 +479,26 @@ export async function unlinkEntityFromEvent(eventId: string, entityId: string) {
   revalidatePath(`/events/${eventId}`)
 
   return { success: true }
+}
+
+// ============================================================================
+// Enrichment Operations
+// ============================================================================
+
+import { enrichEntityCore, type EnrichmentResult } from '@/lib/enrichment'
+
+/**
+ * Enrich a single entity with Google Places data
+ * Wrapper around enrichEntityCore that adds revalidation
+ */
+export async function enrichEntity(entityId: string): Promise<EnrichmentResult> {
+  validateUUID(entityId, 'entity ID')
+
+  const result = await enrichEntityCore(entityId)
+
+  if (result.success) {
+    revalidatePath('/')
+  }
+
+  return result
 }

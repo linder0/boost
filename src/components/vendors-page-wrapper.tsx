@@ -10,6 +10,7 @@ import { VendorsTable, VendorRow, entityToVendorRow } from './vendors-table'
 import { Button } from './ui/button'
 import { bulkDeleteEntities } from '@/app/actions/entities'
 import { Trash2, X, Loader2 } from 'lucide-react'
+import { BulkEnrichModal } from './bulk-enrich-modal'
 
 interface VendorsPageWrapperProps {
   vendors: Entity[]
@@ -104,6 +105,7 @@ export function VendorsPageWrapper({ vendors }: VendorsPageWrapperProps) {
         <div className="flex justify-between items-center">
           <h2 className="text-2xl font-bold">Vendors</h2>
           <div className="flex gap-2">
+            <BulkEnrichModal onComplete={() => router.refresh()} />
             <Button
               variant="outline"
               onClick={() => router.push('/discover')}
@@ -164,6 +166,8 @@ export function VendorsPageWrapper({ vendors }: VendorsPageWrapperProps) {
           onToggleAll={toggleAll}
           onRowClick={handleRowClick}
           mode="saved"
+          showEnrichment={true}
+          onEnrich={() => router.refresh()}
         />
       </div>
 

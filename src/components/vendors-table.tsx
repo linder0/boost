@@ -20,6 +20,7 @@ import {
   formatSource,
   formatPriceLevel,
 } from '@/lib/formatting'
+import { EnrichButton, FindLink } from './enrich-button'
 
 // Unified vendor/restaurant type for both discovery and saved entities
 export interface VendorRow {
@@ -47,6 +48,9 @@ export interface VendorRow {
   // For discovery mode
   isNew?: boolean
   isAlreadyAdded?: boolean
+  // For enrichment
+  googlePlaceId?: string
+  phone?: string
 }
 
 interface VendorsTableProps {
@@ -61,6 +65,10 @@ interface VendorsTableProps {
   selectable?: boolean
   // Highlighted row (from map marker click)
   highlightedId?: string | null
+  // Enrichment callback - triggers refresh when entity is enriched
+  onEnrich?: () => void
+  // Whether to show enrichment controls
+  showEnrichment?: boolean
 }
 
 export function VendorsTable({
@@ -72,9 +80,17 @@ export function VendorsTable({
   mode,
   selectable = true,
   highlightedId,
+  onEnrich,
+  showEnrichment = false,
 }: VendorsTableProps) {
   const allSelected = selectedIds.size === vendors.length && vendors.length > 0
   const someSelected = selectedIds.size > 0 && selectedIds.size < vendors.length
+
+  // Check if vendor needs enrichment (has missing fields and no Google Place ID)
+  const needsEnrichment = (vendor: VendorRow) => {
+    if (vendor.googlePlaceId) return false
+    return !vendor.website || !vendor.rating || !vendor.phone
+  }
 
   return (
     <div className="rounded-md border">
@@ -102,6 +118,7 @@ export function VendorsTable({
             <TableHead className="text-right">
               {mode === 'discovery' ? 'Status' : 'Added'}
             </TableHead>
+            {showEnrichment && <TableHead className="w-24">Enrich</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -152,6 +169,10 @@ export function VendorsTable({
                           Private Dining
                         </Badge>
                       )}
+                      {/* Show Find link if no website and not enriched */}
+                      {showEnrichment && !vendor.website && !vendor.googlePlaceId && (
+                        <FindLink entityId={vendor.id} onEnriched={onEnrich} />
+                      )}
                     </div>
                     {vendor.priceLevel && (
                       <div className="text-xs text-muted-foreground">
@@ -161,7 +182,13 @@ export function VendorsTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <span className="text-sm">{vendor.cuisine || '-'}</span>
+                  {vendor.cuisine ? (
+                    <span className="text-sm">{vendor.cuisine}</span>
+                  ) : showEnrichment && !vendor.googlePlaceId ? (
+                    <FindLink entityId={vendor.id} onEnriched={onEnrich} />
+                  ) : (
+                    <span className="text-sm">-</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -176,10 +203,18 @@ export function VendorsTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <VendorEmailDisplay
-                    email={vendor.email || ''}
-                    emailConfidence={vendor.emailConfidence}
-                  />
+                  {vendor.email ? (
+                    <VendorEmailDisplay
+                      email={vendor.email}
+                      emailConfidence={vendor.emailConfidence}
+                    />
+                  ) : vendor.phone ? (
+                    <span className="text-sm">{vendor.phone}</span>
+                  ) : showEnrichment && !vendor.googlePlaceId ? (
+                    <FindLink entityId={vendor.id} onEnriched={onEnrich} />
+                  ) : (
+                    <span className="text-sm text-muted-foreground">-</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <span className="text-sm">
@@ -218,13 +253,28 @@ export function VendorsTable({
                       <span className="text-sm text-muted-foreground">New</span>
                     )
                   ) : (
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-sm text-muted-foreground" suppressHydrationWarning>
                       {vendor.createdAt
                         ? formatDistanceToNow(new Date(vendor.createdAt), { addSuffix: true })
                         : '-'}
                     </span>
                   )}
                 </TableCell>
+                {showEnrichment && (
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    {needsEnrichment(vendor) ? (
+                      <EnrichButton
+                        entityId={vendor.id}
+                        variant="button"
+                        label="Enrich"
+                        isEnriched={!!vendor.googlePlaceId}
+                        onEnriched={() => onEnrich?.()}
+                      />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Done</span>
+                    )}
+                  </TableCell>
+                )}
               </TableRow>
             )
           })}
@@ -257,6 +307,8 @@ export function entityToVendorRow(entity: Entity): VendorRow {
     website: entity.website || undefined,
     beliRank: entity.metadata?.beli_rank,
     createdAt: entity.created_at,
+    googlePlaceId: entity.metadata?.google_place_id,
+    phone: entity.metadata?.phone,
   }
 }
 
