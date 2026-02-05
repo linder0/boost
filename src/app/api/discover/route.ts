@@ -30,6 +30,18 @@ export async function GET(request: NextRequest) {
     : singleNeighborhood
       ? [singleNeighborhood]
       : undefined
+
+  // Parse map area bounds if provided
+  const boundsParam = searchParams.get('bounds')
+  let bounds: { ne: { lat: number; lng: number }; sw: { lat: number; lng: number } } | undefined
+  if (boundsParam) {
+    try {
+      bounds = JSON.parse(boundsParam)
+    } catch {
+      console.error('Failed to parse bounds param:', boundsParam)
+    }
+  }
+
   const sourcesParam = searchParams.get('sources')
 
   // Parse sources from query param or use defaults
@@ -53,6 +65,7 @@ export async function GET(request: NextRequest) {
         const restaurants = await discoverRestaurants({
           city,
           neighborhoods,
+          bounds,
           cuisine,
           partySize,
           sources,

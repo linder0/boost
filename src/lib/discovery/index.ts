@@ -7,7 +7,7 @@
  * - Hunter.io (email enrichment)
  */
 
-import { searchVenues, GooglePlaceVenue } from './google-places'
+import { searchVenues, geocodeVenueByName, GooglePlaceVenue } from './google-places'
 import { findEmail, findEmailsBatch, HunterEmailResult } from './hunter'
 import { searchResyVenues, resyVenueToDiscovered, ResyVenue } from './resy'
 import {
@@ -33,7 +33,7 @@ import {
 } from './utils'
 
 // Re-exports for external use
-export { searchVenues } from './google-places'
+export { searchVenues, geocodeVenueByName } from './google-places'
 export type { GooglePlaceVenue } from './google-places'
 export { findEmail, findEmailsBatch } from './hunter'
 export type { HunterEmailResult } from './hunter'
@@ -106,10 +106,16 @@ export interface DiscoveryLogEvent {
 
 export type DiscoveryLogger = (event: DiscoveryLogEvent) => void | Promise<void>
 
+export interface LocationBounds {
+  ne: { lat: number; lng: number }
+  sw: { lat: number; lng: number }
+}
+
 export interface DiscoveryOptions {
   city?: string
   neighborhood?: string // Single neighborhood (legacy support)
   neighborhoods?: string[] // Multiple neighborhoods
+  bounds?: LocationBounds // Map area bounds (overrides neighborhoods)
   cuisine?: string
   partySize?: number
   date?: string
@@ -135,6 +141,7 @@ export async function discoverRestaurants(
     city = 'New York',
     neighborhood,
     neighborhoods,
+    bounds,
     cuisine,
     partySize = 20,
     sources = ['google_places', 'resy'],
@@ -150,13 +157,15 @@ export async function discoverRestaurants(
     }
   }
 
-  // Build list of neighborhoods to search
-  // Support both single neighborhood (legacy) and multiple neighborhoods
-  const searchNeighborhoods = neighborhoods?.length
-    ? neighborhoods
-    : neighborhood
-      ? [neighborhood]
-      : [undefined] // Search without neighborhood filter if none provided
+  // Build list of neighborhoods to search (only if no bounds provided)
+  // When bounds are provided, we use them directly instead of neighborhoods
+  const searchNeighborhoods = bounds
+    ? [undefined] // Don't use neighborhoods when using map bounds
+    : neighborhoods?.length
+      ? neighborhoods
+      : neighborhood
+        ? [neighborhood]
+        : [undefined] // Search without neighborhood filter if none provided
 
   // Log the search parameters (single source of truth for what we're searching)
   await log(`Starting restaurant discovery in ${city}...`, undefined, 300)
@@ -173,7 +182,9 @@ export async function discoverRestaurants(
   })
   await log(`Searching: ${sourceLabels.join(', ')}...`)
 
-  if (searchNeighborhoods.length > 0 && searchNeighborhoods[0]) {
+  if (bounds) {
+    await log(`Location: Map area`)
+  } else if (searchNeighborhoods.length > 0 && searchNeighborhoods[0]) {
     await log(`Neighborhoods: ${searchNeighborhoods.filter(Boolean).join(', ')}`)
   }
 
@@ -181,7 +192,7 @@ export async function discoverRestaurants(
     await log(`Cuisine: ${cuisine}`)
   }
 
-  if (partySize && partySize !== 20) {
+  if (partySize) {
     await log(`Party size: ${partySize} guests`)
   }
 
@@ -198,7 +209,7 @@ export async function discoverRestaurants(
 
     if (sources.includes('google_places')) {
       discoveryPromises.push(
-        discoverFromGooglePlaces(city, hood, cuisine, perNeighborhoodLimit).catch((err) => {
+        discoverFromGooglePlaces(city, hood, cuisine, perNeighborhoodLimit, partySize, bounds).catch((err) => {
           console.error('Google Places discovery error:', err)
           return []
         })
@@ -237,7 +248,7 @@ export async function discoverRestaurants(
 
     if (sources.includes('exa')) {
       discoveryPromises.push(
-        discoverFromExa(city, cuisine, perNeighborhoodLimit).catch((err) => {
+        discoverFromExa(city, cuisine, perNeighborhoodLimit, hood, partySize).catch((err) => {
           console.error('Exa discovery error:', err)
           return []
         })
@@ -293,6 +304,31 @@ export async function discoverRestaurants(
 
   const finalResults = allResults.slice(0, limit)
 
+  // Enrich Exa-only results with location data via Google Places lookup
+  const exaOnlyResults = finalResults.filter(
+    (r) => r.discoverySource === 'exa' && !r.latitude
+  )
+  if (exaOnlyResults.length > 0) {
+    await log(`Geocoding ${exaOnlyResults.length} Exa results...`)
+    let geocodedCount = 0
+    for (const restaurant of exaOnlyResults) {
+      const geocoded = await geocodeVenueByName(restaurant.name, city)
+      if (geocoded) {
+        restaurant.latitude = geocoded.latitude
+        restaurant.longitude = geocoded.longitude
+        restaurant.address = geocoded.address
+        restaurant.phone = geocoded.phone
+        restaurant.googlePlaceId = geocoded.googlePlaceId
+        if (geocoded.rating) restaurant.rating = geocoded.rating
+        if (geocoded.priceLevel) restaurant.pricePerPersonMax = geocoded.priceLevel * 50
+        geocodedCount++
+      }
+    }
+    if (geocodedCount > 0) {
+      await log(`${geocodedCount} Exa results enriched with location data`)
+    }
+  }
+
   // Log results summary
   if (finalResults.length === 0) {
     await log('No restaurants found. Try adjusting your search criteria.', 'warn')
@@ -341,13 +377,25 @@ async function discoverFromGooglePlaces(
   city: string,
   neighborhood?: string,
   cuisine?: string,
-  limit: number = 20
+  limit: number = 20,
+  partySize?: number,
+  bounds?: LocationBounds
 ): Promise<DiscoveredRestaurant[]> {
-  const searchTypes = cuisine
-    ? [cuisine.toLowerCase(), 'restaurant']
-    : ['restaurant', 'private_dining']
+  // Build search types based on filters
+  let searchTypes: string[]
+  if (cuisine) {
+    searchTypes = [cuisine.toLowerCase(), 'restaurant']
+  } else if (partySize && partySize > 20) {
+    // For large groups, focus on venues with private dining/event space
+    searchTypes = ['private dining large group', 'event space restaurant', 'banquet restaurant']
+  } else if (partySize && partySize > 8) {
+    // For medium groups
+    searchTypes = ['private dining group', 'restaurant private room']
+  } else {
+    searchTypes = ['restaurant', 'private_dining']
+  }
 
-  const googleVenues = await searchVenues(city, searchTypes, limit, neighborhood)
+  const googleVenues = await searchVenues(city, searchTypes, limit, neighborhood, bounds)
 
   if (googleVenues.length === 0) {
     return []
@@ -549,9 +597,11 @@ async function discoverFromBeli(limit: number = 50): Promise<DiscoveredRestauran
 async function discoverFromExa(
   city: string,
   cuisine?: string,
-  limit: number = 20
+  limit: number = 20,
+  neighborhood?: string,
+  partySize?: number
 ): Promise<DiscoveredRestaurant[]> {
-  const venues = await searchExaVenues(city, cuisine, limit)
+  const venues = await searchExaVenues(city, cuisine, limit, neighborhood, partySize)
 
   console.log(`[Exa] Converting ${venues.length} venues to DiscoveredRestaurant format`)
   venues.forEach((v, i) => console.log(`  [Exa] ${i + 1}. ${v.name}`))
@@ -560,6 +610,7 @@ async function discoverFromExa(
     name: venue.name,
     category: 'Restaurant' as const,
     city,
+    neighborhood, // Pass through the neighborhood used in search
     // Exa doesn't provide structured location data, so we leave these undefined
     // They can be enriched later via Google Places API if needed
     capacityMin: 10,

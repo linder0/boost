@@ -59,6 +59,8 @@ interface VendorsTableProps {
   mode: 'discovery' | 'saved'
   // Whether selection is enabled
   selectable?: boolean
+  // Highlighted row (from map marker click)
+  highlightedId?: string | null
 }
 
 export function VendorsTable({
@@ -69,6 +71,7 @@ export function VendorsTable({
   onRowClick,
   mode,
   selectable = true,
+  highlightedId,
 }: VendorsTableProps) {
   const allSelected = selectedIds.size === vendors.length && vendors.length > 0
   const someSelected = selectedIds.size > 0 && selectedIds.size < vendors.length
@@ -105,14 +108,17 @@ export function VendorsTable({
           {vendors.map((vendor, index) => {
             const isSelected = selectedIds.has(vendor.id)
             const isDisabled = mode === 'discovery' && vendor.isAlreadyAdded
+            const isHighlighted = highlightedId === vendor.id
 
             return (
               <TableRow
                 key={vendor.id}
+                id={`venue-row-${vendor.id}`}
                 className={`
-                  cursor-pointer hover:bg-muted
+                  cursor-pointer hover:bg-muted transition-colors
                   ${isSelected ? 'bg-muted/50' : ''}
                   ${isDisabled ? 'opacity-60' : ''}
+                  ${isHighlighted ? 'bg-primary/15' : ''}
                   ${mode === 'discovery' ? 'animate-in fade-in slide-in-from-top-2 duration-300' : ''}
                 `}
                 style={mode === 'discovery' ? { animationDelay: `${index * 50}ms` } : undefined}
@@ -279,8 +285,10 @@ export function discoveredToVendorRow(
   },
   isAlreadyAdded: boolean
 ): VendorRow {
-  // Use email or composite key as ID for discovery
-  const id = restaurant.email || `${restaurant.name}-${restaurant.discoverySource || 'unknown'}`
+  // Use email or normalized composite key as ID for discovery
+  // Must match getRestaurantId() in venue-discovery.tsx for marker click to work
+  const normalizedName = restaurant.name.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const id = restaurant.email || `${normalizedName}-${restaurant.discoverySource || 'unknown'}`
   return {
     id,
     name: restaurant.name,

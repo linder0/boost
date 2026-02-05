@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button'
 import { VendorsTable, VendorRow, discoveredToVendorRow } from './vendors-table'
 import { createEntitiesFromDiscovery, DiscoveredEntityInput } from '@/app/actions/entities'
 import { discoveredRestaurantToEntity } from '@/lib/discovery/utils'
-import { DiscoveryFilters, DiscoveryMapCard, LogEntry, DISCOVERY_SOURCES } from '@/components/discovery-card'
+import { DiscoveryFilters, DiscoveryMapCard, LogEntry, DISCOVERY_SOURCES, LocationMode } from '@/components/discovery-card'
 import { Loader2 } from 'lucide-react'
-import { NeighborhoodPicker, VenueMarker } from '@/components/mapbox'
+import { NeighborhoodPicker, VenueMarker, MapBounds } from '@/components/mapbox'
 
 interface VenueDiscoveryProps {
   existingVendorNames?: string[]
@@ -169,12 +169,22 @@ export function VenueDiscovery({
   // Filters
   const [selectedCuisine, setSelectedCuisine] = useState<string | null>(null)
   const [selectedSources, setSelectedSources] = useState<Set<string>>(
-    new Set(['google_places', 'exa'])
+    new Set(['google_places'])
   )
-  const [selectedNeighborhoods, setSelectedNeighborhoods] = useState<string[]>([])
-  const [selectedRadius, setSelectedRadius] = useState<string | null>(null)
   const [city] = useState('New York') // Default city
-  const [partySize] = useState(10) // Default party size
+  const [partySizeMin, setPartySizeMin] = useState(9) // Default party size range
+  const [partySizeMax, setPartySizeMax] = useState<number | null>(12)
+
+  // Location filters
+  const [locationMode, setLocationMode] = useState<LocationMode>('neighborhoods')
+  const [selectedNeighborhoods, setSelectedNeighborhoods] = useState<string[]>([])
+  const [selectedRadius, setSelectedRadius] = useState<string>('1') // Default 1 mile
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: 40.735, lng: -73.985 })
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
+  const [radiusCenter, setRadiusCenter] = useState<{ lat: number; lng: number }>({ lat: 40.735, lng: -73.985 })
+
+  // Highlighted row from map marker click
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
 
   // Compute venue markers from discovered restaurants for map display
   const venueMarkers: VenueMarker[] = useMemo(() => {
@@ -224,27 +234,36 @@ export function VenueDiscovery({
 
   const startDiscovery = useCallback(async () => {
     setIsDiscovering(true)
-    // Don't clear restaurants yet - keep them visible with loading overlay
-    // They'll be cleared when the first new result arrives
-    isFirstResult.current = true
+    // Clear old results immediately when starting a new search
+    setRestaurants([])
     setSelectedIds(new Set())
     setLogs([])
     setError(null)
+    isFirstResult.current = true
 
     try {
       // Build query params - filter to only enabled sources
       const enabledSourceIds = new Set(DISCOVERY_SOURCES.filter(s => s.enabled).map(s => s.id))
       const activeSources = Array.from(selectedSources).filter(s => enabledSourceIds.has(s))
 
+      // Use the midpoint of the range, or min if max is null (50+)
+      // partySizeMin === 0 means "Any" - don't filter by party size
+      const effectivePartySize = partySizeMin === 0 ? null : (partySizeMax ? Math.round((partySizeMin + partySizeMax) / 2) : partySizeMin)
       const params = new URLSearchParams({
         city,
-        partySize: String(partySize),
         sources: activeSources.join(','),
       })
+      if (effectivePartySize !== null) {
+        params.set('partySize', String(effectivePartySize))
+      }
       if (selectedCuisine) {
         params.set('cuisine', selectedCuisine)
       }
-      if (selectedNeighborhoods.length > 0) {
+
+      // Use map bounds in map_area mode, otherwise use selected neighborhoods
+      if (locationMode === 'map_area' && mapBounds) {
+        params.set('bounds', JSON.stringify(mapBounds))
+      } else if (selectedNeighborhoods.length > 0) {
         params.set('neighborhoods', selectedNeighborhoods.join(','))
       }
 
@@ -351,7 +370,7 @@ export function VenueDiscovery({
     } finally {
       setIsDiscovering(false)
     }
-  }, [city, partySize, addLog, selectedSources, selectedCuisine, selectedNeighborhoods])
+  }, [city, partySizeMin, partySizeMax, addLog, selectedSources, selectedCuisine, selectedNeighborhoods, locationMode, mapBounds])
 
   const toggleSelection = (id: string) => {
     setSelectedIds(prev => {
@@ -372,6 +391,18 @@ export function VenueDiscovery({
       setSelectedIds(new Set(restaurants.map(getRestaurantId)))
     }
   }
+
+  // Handle marker click from map - scroll to and highlight the row
+  const handleMarkerClick = useCallback((markerId: string) => {
+    setHighlightedId(markerId)
+    // Scroll to the row
+    const rowElement = document.getElementById(`venue-row-${markerId}`)
+    if (rowElement) {
+      rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    // Clear highlight after a delay
+    setTimeout(() => setHighlightedId(null), 2000)
+  }, [])
 
   const toggleSource = (sourceId: string) => {
     const newSources = new Set(selectedSources)
@@ -433,6 +464,14 @@ export function VenueDiscovery({
           onToggleSource={toggleSource}
           selectedCuisine={selectedCuisine}
           onCuisineChange={setSelectedCuisine}
+          partySizeMin={partySizeMin}
+          partySizeMax={partySizeMax}
+          onPartySizeChange={(min, max) => {
+            setPartySizeMin(min)
+            setPartySizeMax(max)
+          }}
+          locationMode={locationMode}
+          onLocationModeChange={setLocationMode}
           selectedNeighborhoods={selectedNeighborhoods}
           onNeighborhoodsChange={setSelectedNeighborhoods}
           selectedRadius={selectedRadius}
@@ -453,6 +492,13 @@ export function VenueDiscovery({
             height="100%"
             markers={venueMarkers}
             hideFooter
+            locationMode={locationMode}
+            radiusMiles={parseFloat(selectedRadius)}
+            radiusCenter={radiusCenter}
+            onRadiusCenterChange={setRadiusCenter}
+            onCenterChange={setMapCenter}
+            onBoundsChange={setMapBounds}
+            onMarkerClick={handleMarkerClick}
           />
         </DiscoveryMapCard>
       </div>
@@ -490,6 +536,7 @@ export function VenueDiscovery({
               onToggleSelection={toggleSelection}
               onToggleAll={toggleAll}
               mode="discovery"
+              highlightedId={highlightedId}
             />
           </div>
 

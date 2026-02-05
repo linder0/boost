@@ -53,7 +53,9 @@ export interface ExaVenue {
 export async function searchExaVenues(
   city: string,
   cuisine?: string,
-  limit: number = 20
+  limit: number = 20,
+  neighborhood?: string,
+  partySize?: number
 ): Promise<ExaVenue[]> {
   if (!EXA_API_KEY) {
     console.warn('[Exa] No EXA_API_KEY configured - skipping Exa search')
@@ -66,7 +68,7 @@ export async function searchExaVenues(
   const seenNames = new Set<string>()
 
   // Strategy 1: Direct restaurant website search
-  const directQuery = buildDirectQuery(city, cuisine)
+  const directQuery = buildDirectQuery(city, cuisine, neighborhood, partySize)
   console.log(`[Exa] Searching direct: "${directQuery}"`)
 
   try {
@@ -96,7 +98,7 @@ export async function searchExaVenues(
   }
 
   // Strategy 2: Review site search
-  const reviewQuery = buildReviewQuery(city, cuisine)
+  const reviewQuery = buildReviewQuery(city, cuisine, neighborhood, partySize)
   console.log(`[Exa] Searching reviews: "${reviewQuery}"`)
 
   try {
@@ -125,12 +127,37 @@ export async function searchExaVenues(
 }
 
 /**
+ * Get party size descriptor for semantic search queries
+ */
+function getPartySizeDescriptor(partySize?: number): string | null {
+  if (!partySize || partySize === 0) return null // "Any" - no specific size
+  if (partySize <= 8) return 'intimate small group'
+  if (partySize <= 20) return `group dinner ${partySize} guests`
+  if (partySize <= 50) return `large group ${partySize} guests`
+  return 'private event space large party 50+ guests'
+}
+
+/**
  * Build query for direct restaurant website search
  */
-function buildDirectQuery(city: string, cuisine?: string): string {
-  const parts = ['private dining room', 'restaurant']
+function buildDirectQuery(city: string, cuisine?: string, neighborhood?: string, partySize?: number): string {
+  const parts = ['private dining']
+
+  // Add party size context
+  const sizeDescriptor = getPartySizeDescriptor(partySize)
+  if (sizeDescriptor) {
+    parts.push(sizeDescriptor)
+  } else {
+    parts.push('room') // Default: "private dining room"
+  }
+
+  parts.push('restaurant')
   if (cuisine) {
     parts.push(cuisine)
+  }
+  // Include neighborhood for more targeted search
+  if (neighborhood) {
+    parts.push(neighborhood)
   }
   parts.push(city)
   return parts.join(' ')
@@ -139,10 +166,23 @@ function buildDirectQuery(city: string, cuisine?: string): string {
 /**
  * Build query for review site search
  */
-function buildReviewQuery(city: string, cuisine?: string): string {
-  const parts = ['best private dining', 'group dinner']
+function buildReviewQuery(city: string, cuisine?: string, neighborhood?: string, partySize?: number): string {
+  const parts = ['best private dining']
+
+  // Add party size context
+  const sizeDescriptor = getPartySizeDescriptor(partySize)
+  if (sizeDescriptor) {
+    parts.push(sizeDescriptor)
+  } else {
+    parts.push('group dinner') // Default: generic group
+  }
+
   if (cuisine) {
     parts.push(cuisine)
+  }
+  // Include neighborhood for more targeted search
+  if (neighborhood) {
+    parts.push(neighborhood)
   }
   parts.push(city)
   return parts.join(' ')

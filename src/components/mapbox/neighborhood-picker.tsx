@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { createMarkerElement } from './map-marker-label'
 
 // NYC Neighborhood boundaries (real polygon data from NYC Open Data)
 const NYC_NEIGHBORHOOD_BOUNDS: Record<string, {
@@ -187,6 +188,13 @@ export interface VenueMarker {
   label?: string
 }
 
+export interface MapBounds {
+  ne: { lat: number; lng: number }
+  sw: { lat: number; lng: number }
+}
+
+export type MapLocationMode = 'neighborhoods' | 'radius' | 'map_area'
+
 interface NeighborhoodPickerProps {
   selected: string[]
   onChange: (neighborhoods: string[]) => void
@@ -194,6 +202,16 @@ interface NeighborhoodPickerProps {
   className?: string
   markers?: VenueMarker[]
   hideFooter?: boolean
+  // Location mode
+  locationMode?: MapLocationMode
+  radiusMiles?: number // For radius mode
+  radiusCenter?: { lat: number; lng: number } // Draggable center for radius mode
+  onRadiusCenterChange?: (center: { lat: number; lng: number }) => void
+  // Map movement callbacks
+  onCenterChange?: (center: { lat: number; lng: number }) => void
+  onBoundsChange?: (bounds: MapBounds) => void
+  // Marker click callback
+  onMarkerClick?: (markerId: string) => void
 }
 
 export function NeighborhoodPicker({
@@ -203,23 +221,52 @@ export function NeighborhoodPicker({
   className = '',
   markers = [],
   hideFooter = false,
+  locationMode = 'neighborhoods',
+  radiusMiles = 1,
+  radiusCenter,
+  onRadiusCenterChange,
+  onCenterChange,
+  onBoundsChange,
+  onMarkerClick,
 }: NeighborhoodPickerProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const mapboxglRef = useRef<any>(null)
   const markersRef = useRef<Map<string, any>>(new Map())
+  const radiusCenterMarkerRef = useRef<any>(null)
   const [mapReady, setMapReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hoveredNeighborhood, setHoveredNeighborhood] = useState<string | null>(null)
+  const [internalRadiusCenter, setInternalRadiusCenter] = useState<{ lat: number; lng: number }>({ lat: 40.735, lng: -73.985 })
+
+  // Use prop if provided, otherwise use internal state
+  const effectiveRadiusCenter = radiusCenter || internalRadiusCenter
 
   // Refs to store current values for use in Mapbox event handlers (to avoid stale closures)
   const selectedRef = useRef(selected)
   const onChangeRef = useRef(onChange)
+  const onCenterChangeRef = useRef(onCenterChange)
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  const onRadiusCenterChangeRef = useRef(onRadiusCenterChange)
+  const locationModeRef = useRef(locationMode)
 
   // Keep refs up to date
   useEffect(() => {
     selectedRef.current = selected
   }, [selected])
+
+  useEffect(() => {
+    locationModeRef.current = locationMode
+  }, [locationMode])
+
+  useEffect(() => {
+    onRadiusCenterChangeRef.current = onRadiusCenterChange
+  }, [onRadiusCenterChange])
+
+  useEffect(() => {
+    onCenterChangeRef.current = onCenterChange
+    onBoundsChangeRef.current = onBoundsChange
+  }, [onCenterChange, onBoundsChange])
 
   useEffect(() => {
     onChangeRef.current = onChange
@@ -262,6 +309,34 @@ export function NeighborhoodPicker({
           if (isMounted) {
             setMapReady(true)
             addNeighborhoodLayers(map)
+
+            // Emit initial center and bounds
+            const center = map.getCenter()
+            const bounds = map.getBounds()
+            if (onCenterChangeRef.current) {
+              onCenterChangeRef.current({ lat: center.lat, lng: center.lng })
+            }
+            if (onBoundsChangeRef.current && bounds) {
+              onBoundsChangeRef.current({
+                ne: { lat: bounds.getNorth(), lng: bounds.getEast() },
+                sw: { lat: bounds.getSouth(), lng: bounds.getWest() },
+              })
+            }
+          }
+        })
+
+        // Emit center and bounds on map move
+        map.on('moveend', () => {
+          const center = map.getCenter()
+          const bounds = map.getBounds()
+          if (onCenterChangeRef.current) {
+            onCenterChangeRef.current({ lat: center.lat, lng: center.lng })
+          }
+          if (onBoundsChangeRef.current && bounds) {
+            onBoundsChangeRef.current({
+              ne: { lat: bounds.getNorth(), lng: bounds.getEast() },
+              sw: { lat: bounds.getSouth(), lng: bounds.getWest() },
+            })
           }
         })
 
@@ -332,26 +407,26 @@ export function NeighborhoodPicker({
         },
       })
 
-      // Add fill layer
+      // Add fill layer - start with very low opacity for unselected state
       map.addLayer({
         id: fillLayerId,
         type: 'fill',
         source: sourceId,
         paint: {
           'fill-color': data.color,
-          'fill-opacity': 0.2,
+          'fill-opacity': 0.08,
         },
       })
 
-      // Add outline layer
+      // Add outline layer - start with low opacity for unselected state
       map.addLayer({
         id: outlineLayerId,
         type: 'line',
         source: sourceId,
         paint: {
           'line-color': data.color,
-          'line-width': 2,
-          'line-opacity': 0.6,
+          'line-width': 1.5,
+          'line-opacity': 0.25,
         },
       })
 
@@ -386,7 +461,9 @@ export function NeighborhoodPicker({
       })
 
       // Click handler - use refs to avoid stale closure issues
+      // Only allow clicks when in neighborhoods mode
       map.on('click', fillLayerId, () => {
+        if (locationModeRef.current !== 'neighborhoods') return
         const currentSelected = selectedRef.current
         const newSelected = currentSelected.includes(name)
           ? currentSelected.filter((n) => n !== name)
@@ -394,8 +471,9 @@ export function NeighborhoodPicker({
         onChangeRef.current(newSelected)
       })
 
-      // Hover handlers
+      // Hover handlers - only show hover in neighborhoods mode
       map.on('mouseenter', fillLayerId, () => {
+        if (locationModeRef.current !== 'neighborhoods') return
         map.getCanvas().style.cursor = 'pointer'
         setHoveredNeighborhood(name)
       })
@@ -407,28 +485,203 @@ export function NeighborhoodPicker({
     })
   }
 
-  // Update layer styles when selection changes
+  // Update layer styles when selection changes or mode changes
   useEffect(() => {
     if (!mapRef.current || !mapReady) return
 
     const map = mapRef.current
+    const showNeighborhoods = locationMode === 'neighborhoods'
 
     Object.entries(NYC_NEIGHBORHOOD_BOUNDS).forEach(([name, data]) => {
       const fillLayerId = `neighborhood-${name}-fill`
       const outlineLayerId = `neighborhood-${name}-outline`
+      const labelLayerId = `neighborhood-${name}-label`
 
       const isSelected = selected.includes(name)
       const isHovered = hoveredNeighborhood === name
 
       try {
-        map.setPaintProperty(fillLayerId, 'fill-opacity', isSelected ? 0.5 : isHovered ? 0.35 : 0.2)
-        map.setPaintProperty(outlineLayerId, 'line-width', isSelected ? 3 : 2)
-        map.setPaintProperty(outlineLayerId, 'line-opacity', isSelected ? 1 : 0.6)
+        if (showNeighborhoods) {
+          // Show neighborhoods - much higher contrast: selected is vivid, unselected is barely visible
+          map.setPaintProperty(fillLayerId, 'fill-opacity', isSelected ? 0.55 : isHovered ? 0.25 : 0.08)
+          map.setPaintProperty(outlineLayerId, 'line-width', isSelected ? 3 : isHovered ? 2 : 1.5)
+          map.setPaintProperty(outlineLayerId, 'line-opacity', isSelected ? 1 : isHovered ? 0.5 : 0.25)
+          map.setLayoutProperty(labelLayerId, 'visibility', 'visible')
+        } else {
+          // Hide neighborhoods in other modes
+          map.setPaintProperty(fillLayerId, 'fill-opacity', 0)
+          map.setPaintProperty(outlineLayerId, 'line-opacity', 0)
+          map.setLayoutProperty(labelLayerId, 'visibility', 'none')
+        }
       } catch {
         // Layer may not exist yet
       }
     })
-  }, [selected, hoveredNeighborhood, mapReady])
+  }, [selected, hoveredNeighborhood, mapReady, locationMode])
+
+  // Draw radius circle when in radius mode
+  useEffect(() => {
+    if (!mapRef.current || !mapReady) return
+    const map = mapRef.current
+
+    const sourceId = 'radius-circle'
+    const fillLayerId = 'radius-circle-fill'
+    const outlineLayerId = 'radius-circle-outline'
+
+    // Remove existing radius layers
+    try {
+      if (map.getLayer(fillLayerId)) map.removeLayer(fillLayerId)
+      if (map.getLayer(outlineLayerId)) map.removeLayer(outlineLayerId)
+      if (map.getSource(sourceId)) map.removeSource(sourceId)
+    } catch {
+      // Layers may not exist
+    }
+
+    // Only draw in radius mode
+    if (locationMode !== 'radius') return
+
+    // Create a GeoJSON circle (approximation using 64 points)
+    const radiusInMeters = radiusMiles * 1609.34 // Convert miles to meters
+    const points = 64
+    const coords = []
+    const km = radiusInMeters / 1000
+    const distanceX = km / (111.32 * Math.cos((effectiveRadiusCenter.lat * Math.PI) / 180))
+    const distanceY = km / 110.574
+
+    for (let i = 0; i < points; i++) {
+      const theta = (i / points) * (2 * Math.PI)
+      const x = distanceX * Math.cos(theta)
+      const y = distanceY * Math.sin(theta)
+      coords.push([effectiveRadiusCenter.lng + x, effectiveRadiusCenter.lat + y])
+    }
+    coords.push(coords[0]) // Close the circle
+
+    const circleData = {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Polygon' as const,
+        coordinates: [coords],
+      },
+      properties: {},
+    }
+
+    // Add source and layers
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: circleData,
+    })
+
+    map.addLayer({
+      id: fillLayerId,
+      type: 'fill',
+      source: sourceId,
+      paint: {
+        'fill-color': '#3b82f6',
+        'fill-opacity': 0.15,
+      },
+    })
+
+    map.addLayer({
+      id: outlineLayerId,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': '#3b82f6',
+        'line-width': 2,
+        'line-dasharray': [2, 2],
+      },
+    })
+  }, [locationMode, radiusMiles, effectiveRadiusCenter, mapReady])
+
+  // Manage draggable center marker for radius mode
+  useEffect(() => {
+    if (!mapRef.current || !mapReady || !mapboxglRef.current) return
+
+    const mapboxgl = mapboxglRef.current
+
+    // Remove existing center marker if any
+    if (radiusCenterMarkerRef.current) {
+      radiusCenterMarkerRef.current.remove()
+      radiusCenterMarkerRef.current = null
+    }
+
+    // Only show marker in radius mode
+    if (locationMode !== 'radius') return
+
+    // Create a custom marker element
+    const el = document.createElement('div')
+    el.className = 'radius-center-marker'
+    el.style.cssText = `
+      width: 24px;
+      height: 24px;
+      background: #3b82f6;
+      border: 3px solid white;
+      border-radius: 50%;
+      cursor: grab;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transition: transform 0.1s ease;
+    `
+
+    // Add hover effect
+    el.addEventListener('mouseenter', () => {
+      el.style.transform = 'scale(1.15)'
+    })
+    el.addEventListener('mouseleave', () => {
+      el.style.transform = 'scale(1)'
+    })
+
+    // Create draggable marker
+    const marker = new mapboxgl.Marker({
+      element: el,
+      draggable: true,
+    })
+      .setLngLat([effectiveRadiusCenter.lng, effectiveRadiusCenter.lat])
+      .addTo(mapRef.current)
+
+    // Handle drag events
+    marker.on('dragstart', () => {
+      el.style.cursor = 'grabbing'
+    })
+
+    marker.on('drag', () => {
+      const lngLat = marker.getLngLat()
+      const newCenter = { lat: lngLat.lat, lng: lngLat.lng }
+      setInternalRadiusCenter(newCenter)
+      if (onRadiusCenterChangeRef.current) {
+        onRadiusCenterChangeRef.current(newCenter)
+      }
+    })
+
+    marker.on('dragend', () => {
+      el.style.cursor = 'grab'
+      const lngLat = marker.getLngLat()
+      const newCenter = { lat: lngLat.lat, lng: lngLat.lng }
+      setInternalRadiusCenter(newCenter)
+      if (onRadiusCenterChangeRef.current) {
+        onRadiusCenterChangeRef.current(newCenter)
+      }
+    })
+
+    radiusCenterMarkerRef.current = marker
+
+    return () => {
+      if (radiusCenterMarkerRef.current) {
+        radiusCenterMarkerRef.current.remove()
+        radiusCenterMarkerRef.current = null
+      }
+    }
+  }, [locationMode, mapReady])
+
+  // Update marker position when effectiveRadiusCenter changes externally
+  useEffect(() => {
+    if (radiusCenterMarkerRef.current && locationMode === 'radius') {
+      const currentPos = radiusCenterMarkerRef.current.getLngLat()
+      if (currentPos.lat !== effectiveRadiusCenter.lat || currentPos.lng !== effectiveRadiusCenter.lng) {
+        radiusCenterMarkerRef.current.setLngLat([effectiveRadiusCenter.lng, effectiveRadiusCenter.lat])
+      }
+    }
+  }, [effectiveRadiusCenter, locationMode])
+
 
   // Update venue markers when markers prop changes
   useEffect(() => {
@@ -452,41 +705,39 @@ export function NeighborhoodPicker({
     // Add new markers
     markers.forEach((m) => {
       if (!markersRef.current.has(m.id)) {
-        // Create marker element
-        const el = document.createElement('div')
-        el.className = 'venue-marker'
-        el.style.width = '12px'
-        el.style.height = '12px'
-        el.style.backgroundColor = '#ef4444'
-        el.style.borderRadius = '50%'
-        el.style.border = '2px solid white'
-        el.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
-        el.style.cursor = 'pointer'
+        // Create Airbnb-style pill marker (same as vendors page)
+        const el = m.label
+          ? createMarkerElement({ label: m.label, isSelected: false })
+          : (() => {
+              // Fallback to simple dot if no label
+              const dot = document.createElement('div')
+              dot.className = 'venue-marker'
+              dot.style.width = '12px'
+              dot.style.height = '12px'
+              dot.style.backgroundColor = '#ef4444'
+              dot.style.borderRadius = '50%'
+              dot.style.border = '2px solid white'
+              dot.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)'
+              dot.style.cursor = 'pointer'
+              return dot
+            })()
+
+        // Add click handler
+        if (onMarkerClick) {
+          el.addEventListener('click', (e) => {
+            e.stopPropagation()
+            onMarkerClick(m.id)
+          })
+        }
 
         const marker = new mapboxgl.Marker({ element: el })
           .setLngLat([m.lng, m.lat])
           .addTo(mapRef.current)
 
-        // Add tooltip on hover
-        if (m.label) {
-          const popup = new mapboxgl.Popup({
-            closeButton: false,
-            closeOnClick: false,
-            offset: 10,
-          }).setText(m.label)
-
-          el.addEventListener('mouseenter', () => {
-            popup.setLngLat([m.lng, m.lat]).addTo(mapRef.current)
-          })
-          el.addEventListener('mouseleave', () => {
-            popup.remove()
-          })
-        }
-
         markersRef.current.set(m.id, marker)
       }
     })
-  }, [markers, mapReady])
+  }, [markers, mapReady, onMarkerClick])
 
   if (!accessToken) {
     return (
@@ -517,11 +768,13 @@ export function NeighborhoodPicker({
 
   return (
     <div className={`${hideFooter ? 'h-full' : 'space-y-2'} ${className}`}>
-      <div
-        ref={mapContainer}
-        className={`overflow-hidden bg-muted ${hideFooter ? 'h-full' : 'rounded-md'}`}
-        style={hideFooter ? undefined : { height }}
-      />
+      <div className={`relative ${hideFooter ? 'h-full' : ''}`}>
+        <div
+          ref={mapContainer}
+          className={`overflow-hidden bg-muted ${hideFooter ? 'h-full' : 'rounded-md'}`}
+          style={hideFooter ? undefined : { height }}
+        />
+      </div>
       {!hideFooter && (
         <p className="text-xs text-muted-foreground">
           {selected.length === 0

@@ -125,15 +125,17 @@ export function VendorsOverviewMap({
           height="380px"
         />
 
-        {/* Popup card */}
+        {/* Popup card - Airbnb style floating next to marker */}
         {selectedVendor && popupPosition && (
           <div
-            className="z-50"
+            className="z-50 pointer-events-auto"
             style={{
               position: 'absolute',
-              left: popupPosition.x,
+              // Position to the right of the marker with offset
+              left: popupPosition.x + 20,
               top: popupPosition.y,
-              transform: 'translate(-50%, -100%) translateY(-20px)',
+              // Center vertically on the marker
+              transform: 'translateY(-50%)',
             }}
             onClick={(e) => e.stopPropagation()}
           >
