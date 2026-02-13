@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VRM",
-  description: "Vendor discovery and management",
+  title: "Dinner Series",
+  description: "Dinner series production dashboard",
 };
 
 export default function RootLayout({
@@ -26,16 +25,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-hidden`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        <div className="flex h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-hidden bg-sidebar pt-4 pr-4">
-            <div className="h-full rounded-t-2xl bg-white overflow-auto overscroll-contain">
-              {children}
-            </div>
-          </main>
+        <div className="min-h-screen bg-background">
+          {children}
         </div>
       </body>
     </html>

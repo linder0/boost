@@ -12,15 +12,9 @@ export type ActivityAction =
   | 'deleted';
 
 export type DiscoverySource =
-  | 'google_places'
-  | 'resy'
-  | 'opentable'
-  | 'beli'
-  | 'exa'
-  | 'clawdbot'
-  | 'manual'
+  | 'paradigm'
   | 'csv'
-  | 'demo';
+  | 'manual';
 
 // ============================================================================
 // Entity Metadata (stored in JSONB)

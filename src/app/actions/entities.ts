@@ -5,7 +5,7 @@ import {
   handleSupabaseError,
   ensureFound
 } from '@/lib/supabase/server'
-import { Entity, EntityMetadata, DiscoverySource } from '@/types/database'
+import { Entity, EntityMetadata } from '@/types/database'
 import { calculatePopularity } from '@/types/entities'
 import { revalidatePath } from 'next/cache'
 import { validateUUID } from '@/lib/utils'
@@ -155,106 +155,66 @@ export async function bulkDeleteEntities(entityIds: string[]) {
 // ============================================================================
 
 /**
- * Input type for creating entities from discovery
+ * Input type for creating entities from CSV import
  */
-export interface DiscoveredEntityInput {
+export interface ImportedEntityInput {
   name: string
   tags?: string[]
-  // Location fields (granular)
-  address?: string        // Full street address
-  neighborhood?: string   // e.g., "Tribeca", "West Village"
-  city?: string           // e.g., "New York"
+  // Location fields
+  address?: string
+  neighborhood?: string
+  city?: string
   latitude?: number
   longitude?: number
-  location?: string       // Legacy field, fallback
+  location?: string
   // Contact
   website?: string
   email?: string
   phone?: string
-  // Discovery
-  discoverySource?: DiscoverySource
-  googlePlaceId?: string
-  rating?: number
-  reviewCount?: number
-  emailConfidence?: number
-  // Restaurant-specific
-  cuisine?: string
-  priceLevel?: number
-  hasPrivateDining?: boolean
-  privateDiningCapacityMin?: number
-  privateDiningCapacityMax?: number
-  privateDiningMinimum?: number
-  resyVenueId?: string
-  opentableId?: string
-  beliRank?: number
+  // Description / notes
+  description?: string
+  // Additional metadata (flexible)
+  metadata?: Record<string, unknown>
 }
 
 /**
- * Create entities from discovered venues
+ * Create entities from CSV import (Paradigm AI export or manual)
  */
-export async function createEntitiesFromDiscovery(
-  discoveries: DiscoveredEntityInput[]
+export async function createEntitiesFromImport(
+  imports: ImportedEntityInput[],
+  eventId?: string
 ): Promise<Entity[]> {
-  if (discoveries.length === 0) {
-    throw new Error('No venues selected')
+  if (imports.length === 0) {
+    throw new Error('No items to import')
   }
 
   const supabase = await createClient()
 
-  // Check for existing entities by Google Place ID or name to avoid duplicates
-  const googlePlaceIds = discoveries
-    .map(d => d.googlePlaceId)
-    .filter((id): id is string => !!id)
-
-  const names = discoveries.map(d => d.name.toLowerCase())
-
+  // Check for existing entities by name to avoid duplicates
+  const names = imports.map(d => d.name.toLowerCase())
   const { data: existingEntities } = await supabase
     .from('entities')
-    .select('id, name, metadata')
-    .or(`metadata->google_place_id.in.(${googlePlaceIds.join(',')}),name.ilike.any({${names.join(',')}})`)
+    .select('id, name')
+    .ilike('name', `%${names[0]}%`)
 
-  // Build lookup sets
-  const existingPlaceIds = new Set(
-    (existingEntities ?? [])
-      .map((e: { metadata: EntityMetadata }) => e.metadata?.google_place_id)
-      .filter(Boolean)
-  )
   const existingNames = new Set(
     (existingEntities ?? []).map((e: { name: string }) => e.name.toLowerCase())
   )
 
   // Filter out existing entities
-  const newDiscoveries = discoveries.filter(d => {
-    const isExisting = (d.googlePlaceId && existingPlaceIds.has(d.googlePlaceId)) ||
-      existingNames.has(d.name.toLowerCase())
-    return !isExisting
-  })
+  const newImports = imports.filter(d => !existingNames.has(d.name.toLowerCase()))
 
-  if (newDiscoveries.length === 0) {
-    // All entities already exist
+  if (newImports.length === 0) {
     return []
   }
 
   // Create new entities
-  const entitiesToInsert = newDiscoveries.map(d => {
-    // Metadata for additional fields not in columns
+  const entitiesToInsert = newImports.map(d => {
     const metadata: EntityMetadata = {
       email: d.email,
       phone: d.phone,
-      discovery_source: d.discoverySource,
-      google_place_id: d.googlePlaceId,
-      rating: d.rating,
-      review_count: d.reviewCount,
-      email_confidence: d.emailConfidence,
-      cuisine: d.cuisine,
-      price_level: d.priceLevel,
-      has_private_dining: d.hasPrivateDining,
-      private_dining_capacity_min: d.privateDiningCapacityMin,
-      private_dining_capacity_max: d.privateDiningCapacityMax,
-      private_dining_minimum: d.privateDiningMinimum,
-      resy_venue_id: d.resyVenueId,
-      opentable_id: d.opentableId,
-      beli_rank: d.beliRank,
+      discovery_source: 'csv',
+      ...(d.metadata || {}),
     }
 
     // Clean undefined values
@@ -266,17 +226,16 @@ export async function createEntitiesFromDiscovery(
 
     return {
       name: d.name,
-      tags: d.tags || ['restaurant'],
-      // Granular location columns
+      tags: d.tags || [],
       address: d.address || null,
       neighborhood: d.neighborhood || null,
       city: d.city || null,
       latitude: d.latitude || null,
       longitude: d.longitude || null,
-      // Legacy location field (for display)
       location: d.location || d.address || (d.neighborhood && d.city ? `${d.neighborhood}, ${d.city}` : d.city) || null,
+      description: d.description || null,
       website: d.website || null,
-      popularity: calculatePopularity(d.rating, d.reviewCount),
+      popularity: null,
       metadata,
     }
   })
@@ -286,9 +245,25 @@ export async function createEntitiesFromDiscovery(
     .insert(entitiesToInsert)
     .select()
 
-  handleSupabaseError(error, 'Failed to create entities')
+  handleSupabaseError(error, 'Failed to import entities')
+
+  // If eventId provided, link all new entities to the event
+  if (eventId && created && created.length > 0) {
+    const links = created.map((entity: Entity) => ({
+      event_id: eventId,
+      entity_id: entity.id,
+      status: 'shortlisted',
+    }))
+
+    const { error: linkError } = await supabase
+      .from('event_entities')
+      .upsert(links, { onConflict: 'event_id,entity_id' })
+
+    handleSupabaseError(linkError, 'Failed to link entities to event')
+  }
 
   revalidatePath('/')
+  if (eventId) revalidatePath(`/events/${eventId}`)
 
   return (created ?? []) as Entity[]
 }
@@ -481,24 +456,3 @@ export async function unlinkEntityFromEvent(eventId: string, entityId: string) {
   return { success: true }
 }
 
-// ============================================================================
-// Enrichment Operations
-// ============================================================================
-
-import { enrichEntityCore, type EnrichmentResult } from '@/lib/enrichment'
-
-/**
- * Enrich a single entity with Google Places data
- * Wrapper around enrichEntityCore that adds revalidation
- */
-export async function enrichEntity(entityId: string): Promise<EnrichmentResult> {
-  validateUUID(entityId, 'entity ID')
-
-  const result = await enrichEntityCore(entityId)
-
-  if (result.success) {
-    revalidatePath('/')
-  }
-
-  return result
-}

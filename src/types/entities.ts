@@ -1,41 +1,57 @@
 /**
- * Entity Types for VRM (Vendor Relationship Manager)
+ * Entity Types for Dinner Series Dashboard
  * Universal entity system with tag-based categorization
  */
 
-import { Entity, EntityMetadata, DiscoverySource } from './database'
+import { Entity, EntityMetadata } from './database'
 
-// Simple status type for display purposes
-export type EntityStatus = 'discovered' | 'contacted' | 'responded' | 'confirmed' | 'rejected'
+// Simple status type for vendor workflow
+export type EntityStatus = 'shortlisted' | 'contacted' | 'confirmed' | 'booked' | 'declined'
+
+// Guest RSVP status
+export type GuestRsvpStatus = 'invited' | 'confirmed' | 'declined' | 'maybe'
 
 // ============================================================================
 // Tag Constants
 // ============================================================================
 
 /**
- * Common entity tags
+ * Dinner series entity tags
  */
 export const ENTITY_TAGS = {
-  // Type tags
-  VENUE: 'venue',
-  RESTAURANT: 'restaurant',
-  VENDOR: 'vendor',
-  FUNDER: 'funder',
+  // Vendor categories
+  CATERER: 'caterer',
+  FLORIST: 'florist',
+  DECOR: 'decor',
+  PRINTER: 'printer',
+  STAFF: 'staff',
+  VIDEOGRAPHER: 'videographer',
+  PHOTOGRAPHER: 'photographer',
+  AV: 'av',
+
+  // People
+  GUEST: 'guest',
   HOST: 'host',
-  PERSON: 'person',
+  SPEAKER: 'speaker',
 
-  // Feature tags
-  PRIVATE_DINING: 'private_dining',
-  CATERING: 'catering',
-  BAR: 'bar',
-  OUTDOOR: 'outdoor',
-
-  // Status tags
-  VERIFIED: 'verified',
-  PREMIUM: 'premium',
+  // Legacy
+  VENDOR: 'vendor',
+  RESTAURANT: 'restaurant',
 } as const
 
 export type EntityTag = typeof ENTITY_TAGS[keyof typeof ENTITY_TAGS] | string
+
+/**
+ * Category groupings for tabs
+ */
+export const TAB_CATEGORIES = {
+  chef: [ENTITY_TAGS.CATERER, ENTITY_TAGS.RESTAURANT],
+  decor: [ENTITY_TAGS.FLORIST, ENTITY_TAGS.DECOR, ENTITY_TAGS.PRINTER],
+  production: [ENTITY_TAGS.STAFF, ENTITY_TAGS.VIDEOGRAPHER, ENTITY_TAGS.PHOTOGRAPHER, ENTITY_TAGS.AV],
+  guests: [ENTITY_TAGS.GUEST, ENTITY_TAGS.SPEAKER],
+} as const
+
+export type TabCategory = keyof typeof TAB_CATEGORIES
 
 // ============================================================================
 // Display Entity
@@ -43,54 +59,36 @@ export type EntityTag = typeof ENTITY_TAGS[keyof typeof ENTITY_TAGS] | string
 
 /**
  * Entity formatted for display in tables/lists
- * Flattens metadata fields for easy access
  */
 export interface DisplayEntity {
   id?: string
   name: string
   tags: string[]
 
-  // Location (now direct columns)
+  // Location
   address?: string
   neighborhood?: string
   city?: string
   latitude?: number
   longitude?: number
-  location?: string  // Legacy field
+  location?: string
 
   description?: string
   website?: string
-  popularity?: number
 
-  // From metadata
+  // Contact
   email?: string
   phone?: string
-
-  // Discovery
-  discoverySource?: DiscoverySource
-  googlePlaceId?: string
-  rating?: number
-  reviewCount?: number
-  emailConfidence?: number
-
-  // Restaurant-specific
-  cuisine?: string
-  priceLevel?: number
-  hasPrivateDining?: boolean
-  privateDiningCapacityMin?: number
-  privateDiningCapacityMax?: number
-  privateDiningMinimum?: number
-
-  // External IDs
-  resyVenueId?: string
-  opentableId?: string
-  beliRank?: number
 
   // Event-specific (when linked)
   status?: EntityStatus
   notes?: string
-  outreachApproved?: boolean
-  isAlreadyAdded?: boolean
+
+  // Guest-specific
+  company?: string
+  title?: string
+  dietary?: string
+  rsvpStatus?: GuestRsvpStatus
 }
 
 // ============================================================================
@@ -100,7 +98,7 @@ export interface DisplayEntity {
 /**
  * Convert database Entity to DisplayEntity
  */
-export function toDisplayEntity(entity: Entity & { event_entity?: { status: EntityStatus; notes?: string; outreach_approved?: boolean } }): DisplayEntity {
+export function toDisplayEntity(entity: Entity & { event_entity?: { status: string; notes?: string } }): DisplayEntity {
   const m = entity.metadata || {}
 
   return {
@@ -108,7 +106,6 @@ export function toDisplayEntity(entity: Entity & { event_entity?: { status: Enti
     name: entity.name,
     tags: entity.tags || [],
 
-    // Location (now direct columns)
     address: entity.address || undefined,
     neighborhood: entity.neighborhood || undefined,
     city: entity.city || undefined,
@@ -118,81 +115,19 @@ export function toDisplayEntity(entity: Entity & { event_entity?: { status: Enti
 
     description: entity.description || undefined,
     website: entity.website || undefined,
-    popularity: entity.popularity || undefined,
 
-    // From metadata
     email: m.email,
     phone: m.phone,
 
-    discoverySource: m.discovery_source,
-    googlePlaceId: m.google_place_id,
-    rating: m.rating,
-    reviewCount: m.review_count,
-    emailConfidence: m.email_confidence,
-
-    cuisine: m.cuisine,
-    priceLevel: m.price_level,
-    hasPrivateDining: m.has_private_dining,
-    privateDiningCapacityMin: m.private_dining_capacity_min,
-    privateDiningCapacityMax: m.private_dining_capacity_max,
-    privateDiningMinimum: m.private_dining_minimum,
-
-    resyVenueId: m.resy_venue_id,
-    opentableId: m.opentable_id,
-    beliRank: m.beli_rank,
-
     // Event-specific
-    status: entity.event_entity?.status,
+    status: entity.event_entity?.status as EntityStatus | undefined,
     notes: entity.event_entity?.notes || undefined,
-    outreachApproved: entity.event_entity?.outreach_approved,
-  }
-}
 
-/**
- * Convert DisplayEntity to database Entity format
- */
-export function toEntity(display: DisplayEntity): Omit<Entity, 'id' | 'created_at' | 'updated_at'> {
-  const metadata: EntityMetadata = {}
-
-  // Contact
-  if (display.email) metadata.email = display.email
-  if (display.phone) metadata.phone = display.phone
-
-  // Discovery
-  if (display.discoverySource) metadata.discovery_source = display.discoverySource
-  if (display.googlePlaceId) metadata.google_place_id = display.googlePlaceId
-  if (display.rating) metadata.rating = display.rating
-  if (display.reviewCount) metadata.review_count = display.reviewCount
-  if (display.emailConfidence) metadata.email_confidence = display.emailConfidence
-
-  // Restaurant
-  if (display.cuisine) metadata.cuisine = display.cuisine
-  if (display.priceLevel) metadata.price_level = display.priceLevel
-  if (display.hasPrivateDining !== undefined) metadata.has_private_dining = display.hasPrivateDining
-  if (display.privateDiningCapacityMin) metadata.private_dining_capacity_min = display.privateDiningCapacityMin
-  if (display.privateDiningCapacityMax) metadata.private_dining_capacity_max = display.privateDiningCapacityMax
-  if (display.privateDiningMinimum) metadata.private_dining_minimum = display.privateDiningMinimum
-
-  // External IDs
-  if (display.resyVenueId) metadata.resy_venue_id = display.resyVenueId
-  if (display.opentableId) metadata.opentable_id = display.opentableId
-  if (display.beliRank) metadata.beli_rank = display.beliRank
-
-  return {
-    name: display.name,
-    tags: display.tags,
-    // Location columns
-    address: display.address || null,
-    neighborhood: display.neighborhood || null,
-    city: display.city || null,
-    latitude: display.latitude || null,
-    longitude: display.longitude || null,
-    location: display.location || null,
-    // Other fields
-    description: display.description || null,
-    website: display.website || null,
-    popularity: display.popularity || null,
-    metadata,
+    // Guest-specific from metadata
+    company: m.company as string | undefined,
+    title: m.title as string | undefined,
+    dietary: m.dietary as string | undefined,
+    rsvpStatus: m.rsvp_status as GuestRsvpStatus | undefined,
   }
 }
 
@@ -218,41 +153,10 @@ export function hasTag(entity: DisplayEntity | Entity, tag: string): boolean {
 }
 
 /**
- * Check if entity is a restaurant
+ * Check if entity belongs to a tab category
  */
-export function isRestaurant(entity: DisplayEntity | Entity): boolean {
-  return hasTag(entity, ENTITY_TAGS.RESTAURANT)
-}
-
-/**
- * Check if entity is a venue
- */
-export function isVenue(entity: DisplayEntity | Entity): boolean {
-  return hasTag(entity, ENTITY_TAGS.VENUE)
-}
-
-/**
- * Check if entity has private dining
- */
-export function hasPrivateDining(entity: DisplayEntity): boolean {
-  return entity.hasPrivateDining === true ||
-    (entity.privateDiningCapacityMax !== undefined && entity.privateDiningCapacityMax > 0)
-}
-
-// ============================================================================
-// Legacy exports (for gradual migration)
-// ============================================================================
-
-/** @deprecated Use DisplayEntity instead */
-export type RestaurantEntity = DisplayEntity
-
-/** @deprecated Use EntityMetadata instead */
-export interface PrivateDiningCapacity {
-  min: number
-  max: number
-}
-
-/** @deprecated Use toEntity instead */
-export function entityToVendor(entity: DisplayEntity): Record<string, unknown> {
-  return toEntity(entity) as unknown as Record<string, unknown>
+export function belongsToTab(entity: DisplayEntity | Entity, tab: TabCategory): boolean {
+  const categoryTags = TAB_CATEGORIES[tab]
+  const entityTags = 'tags' in entity ? entity.tags : []
+  return entityTags.some(t => (categoryTags as readonly string[]).includes(t))
 }

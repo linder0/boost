@@ -1,13 +1,8 @@
-import { getAllEntities } from '@/app/actions/entities'
-import { VendorsPageWrapper } from '@/components/vendors-page-wrapper'
-import { PAGE_CONTAINER_CLASS } from '@/lib/utils'
+import { getAllEvents } from '@/app/actions/events'
+import { EventList } from '@/components/event-list'
 
 export default async function HomePage() {
-  const vendors = await getAllEntities()
+  const events = await getAllEvents()
 
-  return (
-    <div className={PAGE_CONTAINER_CLASS}>
-      <VendorsPageWrapper vendors={vendors} />
-    </div>
-  )
+  return <EventList events={events} />
 }
