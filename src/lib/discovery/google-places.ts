@@ -9,7 +9,6 @@ import {
   type EntityCategory
 } from '@/lib/entities'
 import { mapPriceLevel, normalizeName } from './utils'
-import { getNeighborhoodBounds } from './neighborhood-bounds'
 
 // Generic names that aren't real restaurants - filter these out
 const GENERIC_NAME_PATTERNS = [
@@ -87,9 +86,6 @@ export async function searchVenues(
   const seenNames = new Set<string>()
   const seenWebsites = new Set<string>()
 
-  // Use explicit bounds if provided, otherwise get neighborhood bounds
-  const neighborhoodBounds = neighborhood ? getNeighborhoodBounds(neighborhood) : null
-
   // Search for each type
   const searchPromises = searchTypes.map(async (type) => {
     const config = getSearchConfig(type)
@@ -105,9 +101,8 @@ export async function searchVenues(
       maxResultCount: Math.ceil(limit / searchTypes.length),
     }
 
-    // Add location restriction: explicit bounds take priority over neighborhood bounds
+    // Add location restriction if bounds provided
     if (bounds) {
-      // Use explicit map area bounds
       requestBody.locationRestriction = {
         rectangle: {
           low: {
@@ -117,20 +112,6 @@ export async function searchVenues(
           high: {
             latitude: bounds.ne.lat,
             longitude: bounds.ne.lng,
-          },
-        },
-      }
-    } else if (neighborhoodBounds) {
-      // Use neighborhood bounds
-      requestBody.locationRestriction = {
-        rectangle: {
-          low: {
-            latitude: neighborhoodBounds.southwest.lat,
-            longitude: neighborhoodBounds.southwest.lng,
-          },
-          high: {
-            latitude: neighborhoodBounds.northeast.lat,
-            longitude: neighborhoodBounds.northeast.lng,
           },
         },
       }

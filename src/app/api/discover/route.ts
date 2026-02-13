@@ -2,7 +2,6 @@ import { NextRequest } from 'next/server'
 import {
   discoverRestaurants,
   DiscoveredRestaurant,
-  DiscoverySource,
   DiscoveryLogEvent,
 } from '@/lib/discovery'
 
@@ -42,13 +41,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const sourcesParam = searchParams.get('sources')
-
-  // Parse sources from query param or use defaults
-  const sources: DiscoverySource[] = sourcesParam
-    ? sourcesParam.split(',') as DiscoverySource[]
-    : ['google_places', 'exa']
-
   // Create streaming response
   const stream = new ReadableStream({
     async start(controller) {
@@ -61,14 +53,13 @@ export async function GET(request: NextRequest) {
           })
         }
 
-        // Discovery with logging - the discovery function logs what it's actually searching
+        // Discovery with logging - uses Google Places
         const restaurants = await discoverRestaurants({
           city,
           neighborhoods,
           bounds,
           cuisine,
           partySize,
-          sources,
           limit: 30,
           logger,
         })
@@ -115,7 +106,7 @@ function sleep(ms: number) {
 }
 
 /**
- * Convert new restaurant format to legacy venue format for UI compatibility
+ * Convert restaurant format to legacy venue format for UI compatibility
  */
 function restaurantToLegacyFormat(restaurant: DiscoveredRestaurant): Record<string, unknown> {
   return {
@@ -143,15 +134,11 @@ function restaurantToLegacyFormat(restaurant: DiscoveredRestaurant): Record<stri
     website: restaurant.website,
     rating: restaurant.rating,
     phone: restaurant.phone,
-    // Restaurant-specific fields
     cuisine: restaurant.cuisine,
     priceLevel: restaurant.priceLevel,
     hasPrivateDining: restaurant.hasPrivateDining,
     privateDiningCapacityMin: restaurant.privateDiningCapacityMin,
     privateDiningCapacityMax: restaurant.privateDiningCapacityMax,
     privateDiningMinimum: restaurant.privateDiningMinimum,
-    resyVenueId: restaurant.resyVenueId,
-    opentableId: restaurant.opentableId,
-    beliRank: restaurant.beliRank,
   }
 }

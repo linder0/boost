@@ -17,13 +17,9 @@ import { type LogEntry, formatTime, getLevelColor, getLevelIcon } from '@/lib/lo
 // Re-export LogEntry for consumers
 export type { LogEntry }
 
-// Discovery source configuration
+// Discovery source configuration (simplified to Google Places only)
 export const DISCOVERY_SOURCES = [
-  { id: 'google_places', label: 'Google', enabled: true, status: 'stable' as const },
-  { id: 'exa', label: 'Exa', enabled: false, status: 'experimental' as const, note: 'Location finding issues' },
-  { id: 'resy', label: 'Resy', enabled: false, status: 'requires_key' as const, note: 'Requires API key' },
-  { id: 'opentable', label: 'OpenTable', enabled: false, status: 'experimental' as const, note: 'Unofficial API' },
-  { id: 'beli', label: 'Beli', enabled: false, status: 'coming_soon' as const },
+  { id: 'google_places', label: 'Google Places', enabled: true, status: 'stable' as const },
 ] as const
 
 // Location mode options
@@ -211,27 +207,6 @@ export function DiscoveryFilters({
         {activeView === 'filters' ? (
           /* Filters View */
           <div className="space-y-4">
-            {/* Discovery Sources */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sources</label>
-              <div className="flex flex-wrap gap-2">
-                {DISCOVERY_SOURCES.map((source) => (
-                  <PillButton
-                    key={source.id}
-                    selected={selectedSources.has(source.id)}
-                    onClick={() => onToggleSource(source.id)}
-                    disabled={!source.enabled || isDiscovering}
-                    title={source.note}
-                  >
-                    {source.label}
-                    {source.status === 'coming_soon' && (
-                      <span className="ml-1 text-xs opacity-50">(soon)</span>
-                    )}
-                  </PillButton>
-                ))}
-              </div>
-            </div>
-
             {/* Cuisine Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Cuisine (optional)</label>
