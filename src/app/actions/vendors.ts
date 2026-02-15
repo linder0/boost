@@ -11,8 +11,6 @@ import { Vendor, VendorWithThread, Event } from '@/types/database'
 import { revalidatePath } from 'next/cache'
 import { validateUUID } from '@/lib/utils'
 import { generateOutreachMessage } from '@/lib/ai/outreach-generator'
-import { findMatchingRestaurants, DemoRestaurant, demoRestaurantToVendor } from '@/lib/demo/restaurants'
-import { discoverRestaurants, DiscoveredRestaurant } from '@/lib/discovery'
 import type { UserProfile } from '@/app/actions/profile'
 import { SupabaseClient } from '@supabase/supabase-js'
 
@@ -62,7 +60,14 @@ export async function createVendor(
 
 export async function bulkCreateVendors(
   eventId: string,
-  vendors: { name: string; category: string; contact_email: string }[]
+  vendors: {
+    name: string
+    category?: string
+    contact_email: string
+    website?: string | null
+    custom_message?: string | null
+    price_per_person?: string | null
+  }[]
 ) {
   const { supabase, user } = await getAuthenticatedClient()
 
@@ -70,7 +75,13 @@ export async function bulkCreateVendors(
 
   const vendorsToInsert = vendors.map((v) => ({
     event_id: eventId,
-    ...v,
+    name: v.name,
+    category: v.category || 'Vendor',
+    contact_email: v.contact_email,
+    website: v.website || null,
+    custom_message: v.custom_message || null,
+    price_per_person: v.price_per_person || null,
+    discovery_source: 'csv' as const,
   }))
 
   const { data: createdVendors, error } = await supabase
@@ -124,7 +135,7 @@ export async function getVendorDetail(vendorId: string) {
 
 export async function updateVendor(
   vendorId: string,
-  data: Partial<Pick<Vendor, 'name' | 'category' | 'contact_email' | 'address' | 'latitude' | 'longitude'>>
+  data: Partial<Pick<Vendor, 'name' | 'category' | 'contact_email' | 'address' | 'latitude' | 'longitude' | 'website' | 'price_per_person' | 'custom_message'>>
 ) {
   const { supabase } = await getAuthenticatedClient()
 
@@ -196,66 +207,7 @@ export async function bulkDeleteVendors(vendorIds: string[], eventId: string) {
   return { success: true, count: vendorIds.length }
 }
 
-export async function discoverRestaurantsForEvent(eventId: string): Promise<{
-  restaurants: (DemoRestaurant | DiscoveredRestaurant)[]
-  event: { city: string; headcount: number; budget: number }
-  source: 'google_places' | 'resy' | 'demo'
-}> {
-  validateUUID(eventId, 'event ID')
-
-  const { supabase, user } = await getAuthenticatedClient()
-
-  const event = await verifyEventOwnership(supabase, eventId, user.id)
-
-  // Try real discovery first (Google Places + Resy)
-  const hasGooglePlacesKey = !!process.env.GOOGLE_PLACES_API_KEY
-
-  if (hasGooglePlacesKey) {
-    try {
-      const discoveredRestaurants = await discoverRestaurants({
-        city: event.city || 'New York',
-        neighborhood: event.constraints?.neighborhood,
-        partySize: event.headcount,
-        sources: ['google_places', 'resy'],
-        limit: 30,
-      })
-
-      if (discoveredRestaurants.length > 0) {
-        return {
-          restaurants: discoveredRestaurants,
-          event: {
-            city: event.city || 'New York',
-            headcount: event.headcount,
-            budget: event.total_budget,
-          },
-          source: 'google_places',
-        }
-      }
-    } catch (error) {
-      console.error('Real discovery failed, falling back to demo data:', error)
-    }
-  }
-
-  // Fallback to demo restaurants
-  const restaurants = findMatchingRestaurants({
-    headcount: event.headcount,
-    budget: event.total_budget || event.venue_budget_ceiling,
-    neighborhood: event.constraints?.neighborhood,
-    requiresPrivateDining: event.constraints?.requires_private_dining,
-  })
-
-  return {
-    restaurants,
-    event: {
-      city: event.city || 'New York',
-      headcount: event.headcount,
-      budget: event.total_budget,
-    },
-    source: 'demo',
-  }
-}
-
-// Input type for restaurant discovery with all metadata fields
+// Input type for adding vendors with all metadata fields
 export interface DiscoveredVendorInput {
   name: string
   category: string

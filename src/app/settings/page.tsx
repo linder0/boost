@@ -28,8 +28,8 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
-                <p className="font-medium">Gmail Integration</p>
-                <p className="text-sm text-muted-foreground">Manage your connected Gmail account</p>
+                <p className="font-medium">Email (AgentMail)</p>
+                <p className="text-sm text-muted-foreground">Vendor outreach is sent from your @planner.usevroom.com inbox</p>
               </div>
               <Button variant="outline" disabled>
                 Coming Soon

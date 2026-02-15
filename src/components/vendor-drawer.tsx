@@ -75,8 +75,6 @@ export function VendorDrawer({ vendor, messages, onClose }: VendorDrawerProps) {
               name={vendor.name}
               rating={vendor.rating}
               website={vendor.website}
-              discoverySource={vendor.discovery_source}
-              showDiscoveryBadge
             />
             <div className="flex items-center gap-3">
               {thread && (

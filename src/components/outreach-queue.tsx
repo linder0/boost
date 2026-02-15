@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { useSelection } from '@/hooks/use-selection'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card'
 import { Button } from './ui/button'
@@ -35,7 +36,6 @@ interface OutreachQueueProps {
 
 export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProps) {
   const router = useRouter()
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [editingVendorId, setEditingVendorId] = useState<string | null>(null)
   const [editedMessage, setEditedMessage] = useState('')
@@ -50,6 +50,8 @@ export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProp
     })
   }, [vendors])
 
+  const { selectedIds, toggle: toggleVendor, toggleAll, toggleGroup: toggleCategory, clear: clearSelection } = useSelection(pendingVendors)
+
   // Group by category
   const groupedVendors = useMemo(() => {
     return groupByCategory(pendingVendors)
@@ -59,48 +61,14 @@ export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProp
     return sortCategories(Object.keys(groupedVendors))
   }, [groupedVendors])
 
-  // Toggle selection
-  const toggleVendor = (vendorId: string) => {
-    const newSelected = new Set(selectedIds)
-    if (newSelected.has(vendorId)) {
-      newSelected.delete(vendorId)
-    } else {
-      newSelected.add(vendorId)
-    }
-    setSelectedIds(newSelected)
-  }
-
-  const toggleAll = () => {
-    if (selectedIds.size === pendingVendors.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(pendingVendors.map((v) => v.id)))
-    }
-  }
-
-  const toggleCategory = (categoryVendors: VendorWithThread[]) => {
-    const categoryIds = categoryVendors.map((v) => v.id)
-    const allSelected = categoryIds.every((id) => selectedIds.has(id))
-    
-    const newSelected = new Set(selectedIds)
-    categoryIds.forEach((id) => {
-      if (allSelected) {
-        newSelected.delete(id)
-      } else {
-        newSelected.add(id)
-      }
-    })
-    setSelectedIds(newSelected)
-  }
-
   // Approve selected vendors
   const handleApproveSelected = async () => {
     if (selectedIds.size === 0) return
-    
+
     setLoading(true)
     try {
       await bulkApproveOutreach(Array.from(selectedIds))
-      setSelectedIds(new Set())
+      clearSelection()
       router.refresh()
     } catch (error) {
       console.error('Failed to approve outreach:', error)
@@ -125,7 +93,7 @@ export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProp
   // Save edited message
   const handleSaveMessage = async () => {
     if (!editingVendorId) return
-    
+
     setLoading(true)
     try {
       await updateVendorMessage(editingVendorId, editedMessage)
@@ -163,16 +131,10 @@ export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProp
             No vendors pending outreach approval.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            Add vendors via discovery or import to get started.
+            Add vendors manually or import from CSV to get started.
           </p>
           <div className="mt-4 flex justify-center gap-2">
-            <Button 
-              variant="outline" 
-              onClick={() => router.push(`/events/${eventId}/vendors/discover`)}
-            >
-              Discover Vendors
-            </Button>
-            <Button 
+            <Button
               variant="outline"
               onClick={() => router.push(`/events/${eventId}/vendors/import`)}
             >
@@ -215,7 +177,7 @@ export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProp
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setSelectedIds(new Set())}
+                onClick={clearSelection}
               >
                 Cancel
               </Button>
@@ -234,7 +196,7 @@ export function OutreachQueue({ vendors, eventId, eventName }: OutreachQueueProp
       {/* Vendor groups */}
       {sortedCategories.map((category) => {
         const categoryVendors = groupedVendors[category]
-        const categorySelectedCount = categoryVendors.filter((v) => 
+        const categorySelectedCount = categoryVendors.filter((v) =>
           selectedIds.has(v.id)
         ).length
 

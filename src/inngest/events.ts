@@ -1,13 +1,11 @@
 // Inngest event schemas
+//
+// Each key maps to an Inngest event name.
+// Events without a handler are noted so they can be implemented or removed.
 export const eventSchemas = {
   'vendor.outreach.start': {
     data: {
       vendorId: 'string',
-      userId: 'string',
-    },
-  },
-  'inbox.poll.triggered': {
-    data: {
       userId: 'string',
     },
   },
@@ -26,14 +24,6 @@ export const eventSchemas = {
       userId: 'string',
     },
   },
-  'decision.made': {
-    data: {
-      decisionId: 'string',
-      threadId: 'string',
-      vendorId: 'string',
-      userId: 'string',
-    },
-  },
   'followup.scheduled': {
     data: {
       threadId: 'string',
@@ -42,6 +32,7 @@ export const eventSchemas = {
       attempt: 'number',
     },
   },
+  // TODO: add handler or remove — currently sent from escalateThread() but has no handler
   'message.human.send': {
     data: {
       threadId: 'string',
@@ -49,6 +40,13 @@ export const eventSchemas = {
       message: 'string',
     },
   },
+  // TODO: add handler or remove — currently sent from make-decision but has no handler
+  'vendor.escalation': {
+    data: {
+      threadId: 'string',
+      vendorId: 'string',
+      userId: 'string',
+      reason: 'string',
+    },
+  },
 };
-
-export type EventSchemas = typeof eventSchemas;

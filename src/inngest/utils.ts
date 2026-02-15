@@ -3,6 +3,20 @@ import { normalizeJoinResult } from '@/lib/utils'
 import { AutomationStep, LogEventType } from '@/types/database'
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Days to wait before first follow-up */
+export const FIRST_FOLLOWUP_DELAY_DAYS = 3
+/** Days to wait before breakup follow-up (from initial outreach) */
+export const BREAKUP_FOLLOWUP_DELAY_DAYS = 4
+
+/** Convert days to milliseconds */
+export function daysToMs(days: number): number {
+  return days * 24 * 60 * 60 * 1000
+}
+
+// ============================================================================
 // Type Definitions
 // ============================================================================
 
@@ -12,6 +26,7 @@ export interface ThreadVendorEvent {
     vendor_id: string
     status: string
     gmail_thread_id: string | null
+    agentmail_thread_id: string | null
     automation_history: AutomationStep[] | null
     follow_up_count: number
     [key: string]: unknown
@@ -107,6 +122,7 @@ export async function storeMessage(
     sender: 'SYSTEM' | 'VENDOR' | 'HUMAN'
     body: string
     gmail_message_id?: string | null
+    agentmail_message_id?: string | null
     inbound: boolean
   }
 ): Promise<{ id: string }> {
@@ -117,6 +133,7 @@ export async function storeMessage(
       sender: data.sender,
       body: data.body,
       gmail_message_id: data.gmail_message_id || null,
+      agentmail_message_id: data.agentmail_message_id || null,
       inbound: data.inbound,
     })
     .select('id')
@@ -171,6 +188,7 @@ export async function updateThreadStatus(
     automation_history?: AutomationStep[]
     follow_up_count?: number
     gmail_thread_id?: string | null
+    agentmail_thread_id?: string | null
     confidence?: string
     outreach_approved?: boolean
     outreach_approved_at?: string

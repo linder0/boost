@@ -19,7 +19,6 @@ import {
   type EntityCategory,
 } from '@/lib/entities'
 import { DisplayEntity } from '@/types/entities'
-import { formatDistanceToNow } from 'date-fns'
 import { VendorNameDisplay, VendorEmailDisplay } from './vendor-display'
 
 // ============================================================================
@@ -305,22 +304,6 @@ export function EntityTable({
 // ============================================================================
 // Pre-built Column Sets
 // ============================================================================
-
-export const discoveryColumns: EntityTableColumn[] = [
-  ...defaultColumns,
-  {
-    key: 'status',
-    label: 'Status',
-    render: (entity) =>
-      entity.isAlreadyAdded ? (
-        <Badge variant="outline" className="text-green-600 border-green-300">
-          Added
-        </Badge>
-      ) : (
-        <span className="text-sm text-muted-foreground">New</span>
-      ),
-  },
-]
 
 export const vendorColumns: EntityTableColumn[] = [
   {

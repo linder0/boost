@@ -29,6 +29,8 @@ export interface UserProfile {
   max_follow_ups: number | null
   auto_reject_over_budget: boolean | null
   auto_respond_viable: boolean | null
+  // AgentMail
+  agentmail_inbox_id: string | null
   created_at: string
   updated_at: string
 }
@@ -51,7 +53,9 @@ export async function getUserProfile(): Promise<UserProfile | null> {
   return data
 }
 
-export async function saveUserProfile(context: string): Promise<UserProfile> {
+export async function saveUserProfile(
+  updates: Partial<Omit<UserProfile, 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+): Promise<UserProfile> {
   const { supabase, user } = await getAuthenticatedClient()
 
   // Try to update first, if no rows affected then insert
@@ -62,30 +66,39 @@ export async function saveUserProfile(context: string): Promise<UserProfile> {
     .single()
 
   if (existing) {
-    // Update existing profile
     const { data, error } = await supabase
       .from('user_profiles')
-      .update({ context })
+      .update(updates)
       .eq('user_id', user.id)
       .select()
       .single()
 
     const updated = ensureFound(data, error, 'Failed to save profile')
     revalidatePath('/profile')
+    revalidatePath('/settings')
     return updated
   } else {
-    // Insert new profile
     const { data, error } = await supabase
       .from('user_profiles')
       .insert({
         user_id: user.id,
-        context,
+        ...updates,
       })
       .select()
       .single()
 
     const created = ensureFound(data, error, 'Failed to save profile')
     revalidatePath('/profile')
+    revalidatePath('/settings')
     return created
   }
+}
+
+export async function saveAutomationSettings(settings: {
+  follow_up_days?: number
+  max_follow_ups?: number
+  auto_reject_over_budget?: boolean
+  auto_respond_viable?: boolean
+}): Promise<UserProfile> {
+  return saveUserProfile(settings)
 }

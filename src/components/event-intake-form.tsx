@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -15,7 +15,7 @@ import {
 } from './ui/select'
 import { Textarea } from './ui/textarea'
 import { PillButton } from './ui/pill-button'
-import { NeighborhoodPicker } from './mapbox'
+import { AddressSearch } from './mapbox'
 import { CUISINE_TYPES } from '@/lib/entities'
 import { createEvent, updateEventSettings } from '@/app/actions/events'
 import { Event } from '@/types/database'
@@ -44,13 +44,14 @@ const PARTY_SIZES = [
 
 interface EventIntakeFormProps {
   event?: Event
+  onSave?: (event: Event) => void
 }
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export function EventIntakeForm({ event }: EventIntakeFormProps) {
+export function EventIntakeForm({ event, onSave }: EventIntakeFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -70,6 +71,9 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
   const [selectedNeighborhoods, setSelectedNeighborhoods] = useState<string[]>(
     event?.constraints?.neighborhoods || []
   )
+  const [locationAddress, setLocationAddress] = useState(event?.location_address || '')
+  const [locationLat, setLocationLat] = useState<number | null>(event?.location_lat ?? null)
+  const [locationLng, setLocationLng] = useState<number | null>(event?.location_lng ?? null)
 
   // Restaurant-specific preferences
   const [selectedCuisines, setSelectedCuisines] = useState<string[]>(
@@ -81,6 +85,32 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
   const [dietaryRestrictions, setDietaryRestrictions] = useState(
     event?.constraints?.dietary_restrictions || ''
   )
+
+  // Track original state for dirty comparison
+  const initialState = useRef({
+    name: event?.name || '',
+    description: event?.description || '',
+    headcount: event?.headcount?.toString() || '',
+    budget: event?.total_budget?.toString() || '',
+    dates: JSON.stringify(event?.preferred_dates?.length ? event.preferred_dates : [{ date: '', rank: 1 }]),
+    timeFrame: event?.constraints?.time_frame || 'evening',
+    locationAddress: event?.location_address || '',
+    selectedCuisines: JSON.stringify(event?.constraints?.cuisines || []),
+    requiresPrivateDining: event?.constraints?.requires_private_dining ?? true,
+    dietaryRestrictions: event?.constraints?.dietary_restrictions || '',
+  })
+
+  const isDirty =
+    name !== initialState.current.name ||
+    description !== initialState.current.description ||
+    headcount !== initialState.current.headcount ||
+    budget !== initialState.current.budget ||
+    JSON.stringify(dates) !== initialState.current.dates ||
+    timeFrame !== initialState.current.timeFrame ||
+    locationAddress !== initialState.current.locationAddress ||
+    JSON.stringify(selectedCuisines) !== initialState.current.selectedCuisines ||
+    requiresPrivateDining !== initialState.current.requiresPrivateDining ||
+    dietaryRestrictions !== initialState.current.dietaryRestrictions
 
   // ============================================================================
   // Handlers
@@ -100,10 +130,14 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
     )
   }
 
-  const toggleNeighborhood = (neighborhood: string) => {
-    setSelectedNeighborhoods(prev =>
-      prev.includes(neighborhood) ? prev.filter(n => n !== neighborhood) : [...prev, neighborhood]
-    )
+  const handleLocationSelect = (data: { address: string; lat: number; lng: number; neighborhood?: string }) => {
+    setLocationAddress(data.address)
+    setLocationLat(data.lat)
+    setLocationLng(data.lng)
+    // Auto-populate neighborhood if returned from geocoding
+    if (data.neighborhood && !selectedNeighborhoods.includes(data.neighborhood)) {
+      setSelectedNeighborhoods(prev => [...prev, data.neighborhood!])
+    }
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -133,19 +167,33 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
           requires_private_dining: requiresPrivateDining,
           dietary_restrictions: dietaryRestrictions.trim() || undefined,
         },
-        location_address: null,
-        location_lat: null,
-        location_lng: null,
+        location_address: locationAddress || null,
+        location_lat: locationLat,
+        location_lng: locationLng,
       }
 
       if (isEditMode && event) {
-        await updateEventSettings(event.id, eventData)
+        const updatedEvent = await updateEventSettings(event.id, eventData)
         setSaved(true)
+        // Update snapshot so isDirty resets
+        initialState.current = {
+          name,
+          description,
+          headcount,
+          budget,
+          dates: JSON.stringify(dates),
+          timeFrame,
+          locationAddress,
+          selectedCuisines: JSON.stringify(selectedCuisines),
+          requiresPrivateDining,
+          dietaryRestrictions,
+        }
+        onSave?.(updatedEvent)
         router.refresh()
         setTimeout(() => setSaved(false), 2000)
       } else {
         const newEvent = await createEvent(eventData)
-        router.push(`/events/${newEvent.id}/vendors/discover`)
+        router.push(`/events/${newEvent.id}/vendors`)
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to save event'
@@ -266,19 +314,27 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
           </div>
         </div>
 
-        {/* Neighborhoods */}
+        {/* Event Address / Venue */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Neighborhoods</h3>
-          <NeighborhoodPicker
-            selected={selectedNeighborhoods}
-            onChange={setSelectedNeighborhoods}
-            height="350px"
-          />
+          <h3 className="text-lg font-semibold">Event Address</h3>
+          <div className="space-y-2">
+            <Label>Venue / Address</Label>
+            <AddressSearch
+              onSelect={handleLocationSelect}
+              defaultValue={locationAddress}
+              placeholder="Search for a venue or address..."
+            />
+            {locationAddress && (
+              <p className="text-xs text-muted-foreground">
+                {locationAddress}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Restaurant Preferences */}
+        {/* Food & Beverage Preferences */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Restaurant Preferences</h3>
+          <h3 className="text-lg font-semibold">Food &amp; Beverage</h3>
 
           {/* Private Dining */}
           <div className="flex items-center space-x-2">
@@ -288,7 +344,7 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
               onCheckedChange={(checked) => setRequiresPrivateDining(checked === true)}
             />
             <Label htmlFor="private-dining" className="cursor-pointer">
-              Requires private dining room
+              Requires private dining space
             </Label>
           </div>
 
@@ -336,10 +392,10 @@ export function EventIntakeForm({ event }: EventIntakeFormProps) {
           </div>
         )}
 
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" disabled={loading || (isEditMode && !isDirty)}>
           {loading
-            ? isEditMode ? 'Saving...' : 'Finding Restaurants...'
-            : isEditMode ? 'Save Changes' : 'Find Restaurants'}
+            ? isEditMode ? 'Saving...' : 'Creating Event...'
+            : isEditMode ? 'Save Changes' : 'Create Event'}
         </Button>
       </form>
     </div>

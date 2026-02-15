@@ -109,20 +109,6 @@ export function hasPrivateDining(entity: RestaurantEntity | DisplayEntity): bool
     (entity.privateDiningCapacity !== undefined && entity.privateDiningCapacity.max > 0)
 }
 
-/**
- * Check if an entity has discovery metadata
- */
-export function hasDiscoveryMetadata(entity: RestaurantEntity | DisplayEntity): boolean {
-  return entity.discoverySource !== undefined && entity.googlePlaceId !== undefined
-}
-
-/**
- * Check if entity is from a specific source
- */
-export function isFromSource(entity: RestaurantEntity | DisplayEntity, source: DiscoverySource): boolean {
-  return entity.discoverySource === source
-}
-
 // ============================================================================
 // Conversion Utilities
 // ============================================================================

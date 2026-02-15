@@ -12,41 +12,40 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { UserProfile, AccountType } from '@/types/database'
+import type { UserProfile, AccountType, CommunicationTone } from '@/app/actions/profile'
 import { saveUserProfile, saveAutomationSettings } from '@/app/actions/profile'
 import { CheckCircle2, XCircle, Building2, User } from 'lucide-react'
 
-interface GmailStatusProps {
-  isConnected: boolean
-  email?: string
+interface EmailStatusProps {
+  inboxId?: string | null
 }
 
-export function GmailStatus({ isConnected, email }: GmailStatusProps) {
+export function EmailStatus({ inboxId }: EmailStatusProps) {
   return (
     <div className="flex items-center justify-between rounded-lg border p-4">
       <div className="flex items-center gap-3">
-        {isConnected ? (
+        {inboxId ? (
           <CheckCircle2 className="h-5 w-5 text-green-500" />
         ) : (
           <XCircle className="h-5 w-5 text-muted-foreground" />
         )}
         <div>
-          <p className="font-medium">Gmail Integration</p>
+          <p className="font-medium">Email (AgentMail)</p>
           <p className="text-sm text-muted-foreground">
-            {isConnected
-              ? `Connected${email ? ` as ${email}` : ''}`
-              : 'Not connected - sign out and sign back in with Google'}
+            {inboxId
+              ? `Outreach sent from ${inboxId}`
+              : 'Inbox will be created when you send your first outreach'}
           </p>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        {isConnected ? (
+        {inboxId ? (
           <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
             Active
           </span>
         ) : (
           <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
-            Inactive
+            Pending
           </span>
         )}
       </div>
@@ -259,7 +258,7 @@ export function CommunicationToneSelector({ currentTone }: CommunicationToneSele
     setTone(newTone)
     setSaving(true)
     try {
-      await saveUserProfile({ communication_tone: newTone as any })
+      await saveUserProfile({ communication_tone: newTone as CommunicationTone })
     } catch (error) {
       console.error('Failed to update tone:', error)
       setTone(currentTone)

@@ -1,7 +1,8 @@
 import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
 import { evaluateVendor } from '@/lib/rules/decision-engine'
-import { sendEmail } from '@/lib/gmail/operations'
+import { sendEmail } from '@/lib/agentmail/operations'
+import { getUserInboxId } from '@/lib/agentmail/inbox'
 import {
   extractThreadVendorEvent,
   appendAutomationHistory,
@@ -135,17 +136,22 @@ export const makeDecision = inngest.createFunction(
         const { thread, vendor, event: eventData } = extractThreadVendorEvent(data)
         const supabase = await createClient()
 
-        // Ensure we have a message body
         if (!decision.proposedNextAction) {
           throw new Error('No proposed action message available')
         }
 
-        // Send email
-        const sentMessage = await sendEmail(userId, {
+        // Get user's AgentMail inbox
+        const inboxId = await getUserInboxId(userId)
+        if (!inboxId) {
+          throw new Error(`No AgentMail inbox found for user ${userId}`)
+        }
+
+        // Send email via AgentMail
+        const sentMessage = await sendEmail(inboxId, {
           to: vendor.contact_email,
           subject: `Re: Inquiry - ${eventData.name}`,
           body: decision.proposedNextAction,
-          threadId: thread.gmail_thread_id || undefined,
+          threadId: thread.agentmail_thread_id || undefined,
         })
 
         // Store message
@@ -153,7 +159,7 @@ export const makeDecision = inngest.createFunction(
           thread_id: threadId,
           sender: 'SYSTEM',
           body: decision.proposedNextAction,
-          gmail_message_id: sentMessage.id || null,
+          agentmail_message_id: sentMessage.id || null,
           inbound: false,
         })
 

@@ -100,6 +100,7 @@ export interface Vendor {
   latitude?: number | null;
   longitude?: number | null;
   custom_message?: string | null;
+  price_per_person?: string | null;
   // Discovery metadata fields
   website?: string | null;
   rating?: number | null;
@@ -139,6 +140,7 @@ export interface VendorThread {
   escalation_category: EscalationCategory | null;
   follow_up_count: number;
   gmail_thread_id: string | null;
+  agentmail_thread_id: string | null;
   // Approval workflow fields
   outreach_approved: boolean;
   outreach_approved_at: string | null;
@@ -155,6 +157,7 @@ export interface Message {
   sender: MessageSender;
   body: string;
   gmail_message_id: string | null;
+  agentmail_message_id: string | null;
   inbound: boolean;
   created_at: string;
 }

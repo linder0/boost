@@ -3,6 +3,7 @@
 import { ParsedResponse } from '@/types/database'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import { Badge } from './ui/badge'
+import { getConfidenceVariant, getSentimentVariant } from './status-badge'
 import { format } from 'date-fns'
 
 interface ParsedFactsCardProps {
@@ -28,15 +29,7 @@ export function ParsedFactsCard({ parsed }: ParsedFactsCardProps) {
       <CardHeader>
         <CardTitle className="flex items-center justify-between text-sm">
           <span>Parsed Facts</span>
-          <Badge
-            variant={
-              parsed.confidence === 'HIGH'
-                ? 'default'
-                : parsed.confidence === 'MEDIUM'
-                ? 'secondary'
-                : 'destructive'
-            }
-          >
+          <Badge variant={getConfidenceVariant(parsed.confidence)}>
             {parsed.confidence} Confidence
           </Badge>
         </CardTitle>
@@ -49,7 +42,7 @@ export function ParsedFactsCard({ parsed }: ParsedFactsCardProps) {
           </h4>
           {parsed.availability && parsed.availability.length > 0 ? (
             <ul className="space-y-1">
-              {parsed.availability.map((avail: any, idx: number) => (
+              {parsed.availability.map((avail, idx) => (
                 <li key={idx} className="text-sm">
                   {format(new Date(avail.date), 'MMMM d, yyyy')}
                   {avail.time && ` at ${avail.time}`}
@@ -68,14 +61,14 @@ export function ParsedFactsCard({ parsed }: ParsedFactsCardProps) {
           {parsed.quote ? (
             <div>
               <p className="text-lg font-bold">
-                ${(parsed.quote as any).amount?.toLocaleString() || 'N/A'}{' '}
-                {(parsed.quote as any).currency || 'USD'}
+                ${parsed.quote.amount?.toLocaleString() || 'N/A'}{' '}
+                {parsed.quote.currency || 'USD'}
               </p>
-              {(parsed.quote as any).breakdown &&
-                (parsed.quote as any).breakdown.length > 0 && (
+              {parsed.quote.breakdown &&
+                parsed.quote.breakdown.length > 0 && (
                   <ul className="mt-2 space-y-1">
-                    {(parsed.quote as any).breakdown.map(
-                      (item: any, idx: number) => (
+                    {parsed.quote.breakdown.map(
+                      (item, idx) => (
                         <li key={idx} className="flex justify-between text-sm">
                           <span>{item.item}</span>
                           <span className="font-medium">
@@ -129,15 +122,7 @@ export function ParsedFactsCard({ parsed }: ParsedFactsCardProps) {
           <h4 className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
             Sentiment
           </h4>
-          <Badge
-            variant={
-              parsed.sentiment === 'positive'
-                ? 'default'
-                : parsed.sentiment === 'negative'
-                ? 'destructive'
-                : 'secondary'
-            }
-          >
+          <Badge variant={getSentimentVariant(parsed.sentiment)}>
             {parsed.sentiment || 'neutral'}
           </Badge>
         </div>
