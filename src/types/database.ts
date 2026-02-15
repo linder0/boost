@@ -117,6 +117,7 @@ export interface Vendor {
   opentable_id?: string | null;
   beli_rank?: number | null;
   has_private_dining?: boolean | null;
+  summary?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -223,9 +224,17 @@ export interface ChatMessage {
   created_at: string;
 }
 
+// Lightweight message shape returned by the vendors list query
+export interface MessagePreview {
+  id: string;
+  body: string;
+  sender: MessageSender;
+  created_at: string;
+}
+
 // Joined types for UI
 export interface VendorWithThread extends Vendor {
-  vendor_threads?: VendorThread;
+  vendor_threads?: VendorThread & { messages?: MessagePreview[] };
 }
 
 export interface MessageWithParsed extends Message {

@@ -1,5 +1,6 @@
 // Barrel exports for AI utilities
-export { generateOutreachMessage } from './outreach-generator'
+export { generateOutreachMessage, generateVendorSummary } from './outreach-generator'
+export type { VendorInfo } from './outreach-generator'
 export { parseVendorEmail, calculateConfidenceScore } from './parser'
 export type { ParsedVendorResponse } from './parser'
 export { getChatResponse, streamChatResponse } from './chat-assistant'

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { VendorsTable } from '@/components/vendors-table'
 import { VendorDrawer } from '@/components/vendor-drawer'
-import { VendorsOverviewMap } from '@/components/vendors-overview-map'
 import { VendorWithThread, MessageWithParsed } from '@/types/database'
 import { getVendorDetail } from '@/app/actions/vendors'
 
@@ -55,11 +54,6 @@ export function VendorsTableWrapper({
 
   return (
     <>
-      <VendorsOverviewMap
-        vendors={vendors}
-        onVendorClick={setSelectedVendor}
-      />
-
       <VendorsTable
         vendors={vendors}
         eventId={eventId}

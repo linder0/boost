@@ -2,7 +2,7 @@ import { Event, Vendor } from '@/types/database'
 import { formatPreferredDates, buildConstraintsList } from '@/lib/utils'
 
 export function generateOutreachEmail(
-  event: Event, 
+  event: Event,
   vendor: Vendor | { name: string },
   signature: string = 'Event Planning Team'
 ): string {
@@ -28,10 +28,7 @@ Could you please confirm:
 I'm hoping to make a decision within the next week, so a quick response would be greatly appreciated.
 
 Best regards,
-${signature}
-
----
-This is an automated inquiry. If you have any questions or need clarification, please reply to this email.`
+${signature}`
 }
 
 export function generateOutreachSubject(event: Event): string {

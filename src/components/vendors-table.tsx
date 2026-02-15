@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { useSelection } from '@/hooks/use-selection'
 import { useRouter } from 'next/navigation'
 import {
@@ -13,13 +13,13 @@ import {
 } from './ui/table'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
-import { VendorWithThread, VendorStatus } from '@/types/database'
+import { VendorWithThread, VendorStatus, MessageSender } from '@/types/database'
 import { StatusBadge } from './status-badge'
 import { EmptyState } from './empty-state'
-import { updateVendor, bulkDeleteVendors } from '@/app/actions/vendors'
+import { bulkDeleteVendors } from '@/app/actions/vendors'
 import { normalizeJoinResult } from '@/lib/utils'
 import { Checkbox } from './ui/checkbox'
-import { Loader2, Trash2, X, ExternalLink } from 'lucide-react'
+import { Loader2, Trash2, X } from 'lucide-react'
 
 // ============================================================================
 // Types
@@ -37,98 +37,54 @@ interface VendorsTableProps {
   cuisines?: string[]
 }
 
-type EditableField = 'name' | 'price_per_person' | 'website' | 'contact_email' | 'custom_message'
+// ============================================================================
+// Helpers
+// ============================================================================
 
-interface EditingCell {
-  vendorId: string
-  field: EditableField
+/**
+ * Get the most recent message from a vendor's thread messages.
+ */
+function getLatestMessage(vendor: VendorWithThread): { sender: MessageSender; body: string } | null {
+  const thread = normalizeJoinResult(vendor.vendor_threads)
+  const messages = (thread as Record<string, unknown> | null)?.messages as
+    | { body: string; sender: MessageSender; created_at: string }[]
+    | undefined
+
+  if (!messages || messages.length === 0) return null
+
+  const sorted = [...messages].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+
+  return { sender: sorted[0].sender, body: sorted[0].body }
 }
 
-// ============================================================================
-// Editable Cell
-// ============================================================================
-
-function EditableCell({
-  value,
-  vendorId,
-  field,
-  editingCell,
-  onStartEdit,
-  onSave,
-  isLink,
-  placeholder,
-  className,
-}: {
-  value: string
-  vendorId: string
-  field: EditableField
-  editingCell: EditingCell | null
-  onStartEdit: (vendorId: string, field: EditableField) => void
-  onSave: (vendorId: string, field: EditableField, value: string) => void
-  isLink?: boolean
-  placeholder?: string
-  className?: string
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const isEditing = editingCell?.vendorId === vendorId && editingCell?.field === field
-
-  const handleBlur = () => {
-    const newValue = inputRef.current?.value ?? value
-    onSave(vendorId, field, newValue)
+/**
+ * Format sender label for display.
+ */
+function formatSender(sender: MessageSender): string {
+  switch (sender) {
+    case 'SYSTEM':
+      return 'You'
+    case 'HUMAN':
+      return 'You'
+    case 'VENDOR':
+      return 'Vendor'
+    default:
+      return sender
   }
+}
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleBlur()
-    }
-    if (e.key === 'Escape') {
-      onSave(vendorId, field, value) // revert
-    }
-  }
-
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        defaultValue={value}
-        autoFocus
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className={`w-full bg-transparent outline-none text-sm py-0.5 border-b border-foreground/20 focus:border-foreground transition-colors ${className ?? ''}`}
-        placeholder={placeholder}
-        onClick={(e) => e.stopPropagation()}
-      />
-    )
-  }
-
-  const display = value || placeholder
-
-  return (
-    <div
-      className={`group/cell cursor-text min-h-[24px] flex items-center text-sm rounded px-1 -mx-1 hover:bg-muted/60 transition-colors ${className ?? ''}`}
-      onClick={(e) => {
-        e.stopPropagation()
-        onStartEdit(vendorId, field)
-      }}
-    >
-      {isLink && value ? (
-        <a
-          href={value.startsWith('http') ? value : `https://${value}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-blue-600 hover:underline truncate max-w-[180px]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="truncate">{value}</span>
-          <ExternalLink className="w-3 h-3 shrink-0" />
-        </a>
-      ) : (
-        <span className={value ? '' : 'text-muted-foreground/50'}>
-          {display}
-        </span>
-      )}
-    </div>
-  )
+/**
+ * Client-side fallback summary when vendor.summary is not yet generated.
+ */
+function composeFallbackSummary(vendor: VendorWithThread): string {
+  const parts: string[] = []
+  if (vendor.cuisine) parts.push(vendor.cuisine)
+  if (vendor.price_per_person) parts.push(vendor.price_per_person)
+  if (vendor.has_private_dining) parts.push('Private dining')
+  if (parts.length > 0) return parts.join(' · ')
+  return vendor.category || 'Vendor'
 }
 
 // ============================================================================
@@ -148,42 +104,9 @@ export function VendorsTable({
 }: VendorsTableProps) {
   const router = useRouter()
 
-  // Editing
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null)
-  const [savingCell, setSavingCell] = useState<string | null>(null) // "vendorId:field"
-
   // Selection
   const { selectedIds, toggle: toggleSelection, toggleAll, clear: clearSelection, allSelected, someSelected, isSelected } = useSelection(vendors)
   const [isDeleting, setIsDeleting] = useState(false)
-
-  // ============================================================================
-  // Cell editing
-  // ============================================================================
-
-  const handleStartEdit = useCallback((vendorId: string, field: EditableField) => {
-    setEditingCell({ vendorId, field })
-  }, [])
-
-  const handleSaveCell = useCallback(async (vendorId: string, field: EditableField, newValue: string) => {
-    setEditingCell(null)
-
-    // Find original value
-    const vendor = vendors.find(v => v.id === vendorId)
-    if (!vendor) return
-
-    const originalValue = (vendor[field] as string) ?? ''
-    if (newValue === originalValue) return // no change
-
-    const cellKey = `${vendorId}:${field}`
-    setSavingCell(cellKey)
-    try {
-      await updateVendor(vendorId, { [field]: newValue || null })
-    } catch (error) {
-      console.error('Failed to update vendor:', error)
-    } finally {
-      setSavingCell(null)
-    }
-  }, [vendors])
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
@@ -231,7 +154,6 @@ export function VendorsTable({
   // Render
   // ============================================================================
 
-
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -267,7 +189,7 @@ export function VendorsTable({
         </div>
       )}
 
-      {/* Editable table */}
+      {/* Read-only table */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -279,23 +201,24 @@ export function VendorsTable({
                   onCheckedChange={toggleAll}
                 />
               </TableHead>
-              <TableHead className="min-w-[160px]">Vendor Name</TableHead>
-              <TableHead className="min-w-[130px]">Price / Person</TableHead>
-              <TableHead className="min-w-[160px]">Link</TableHead>
-              <TableHead className="min-w-[180px]">Contact</TableHead>
-              <TableHead className="min-w-[200px]">Outreach Message</TableHead>
-              <TableHead className="w-[100px]">Status</TableHead>
+              <TableHead className="min-w-[160px]">Name</TableHead>
+              <TableHead className="min-w-[200px]">About</TableHead>
+              <TableHead className="min-w-[240px]">Latest Message</TableHead>
+              <TableHead className="w-[110px]">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {vendors.map(vendor => {
               const thread = normalizeJoinResult(vendor.vendor_threads)
               const selected = isSelected(vendor.id)
+              const latestMessage = getLatestMessage(vendor)
+              const aboutText = vendor.summary || composeFallbackSummary(vendor)
 
               return (
                 <TableRow
                   key={vendor.id}
-                  className={`${selected ? 'bg-muted/50' : ''} hover:bg-muted/30`}
+                  className={`${selected ? 'bg-muted/50' : ''} hover:bg-muted/30 cursor-pointer`}
+                  onClick={() => onVendorClick(vendor)}
                 >
                   <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
@@ -303,63 +226,34 @@ export function VendorsTable({
                       onCheckedChange={() => toggleSelection(vendor.id)}
                     />
                   </TableCell>
+
+                  {/* Name */}
                   <TableCell>
-                    <EditableCell
-                      value={vendor.name}
-                      vendorId={vendor.id}
-                      field="name"
-                      editingCell={editingCell}
-                      onStartEdit={handleStartEdit}
-                      onSave={handleSaveCell}
-                      placeholder="Vendor name"
-                      className="font-medium"
-                    />
+                    <span className="text-sm font-medium">{vendor.name}</span>
                   </TableCell>
+
+                  {/* About */}
                   <TableCell>
-                    <EditableCell
-                      value={vendor.price_per_person ?? ''}
-                      vendorId={vendor.id}
-                      field="price_per_person"
-                      editingCell={editingCell}
-                      onStartEdit={handleStartEdit}
-                      onSave={handleSaveCell}
-                      placeholder="—"
-                    />
+                    <span className="text-sm text-muted-foreground line-clamp-1">
+                      {aboutText}
+                    </span>
                   </TableCell>
+
+                  {/* Latest Message */}
                   <TableCell>
-                    <EditableCell
-                      value={vendor.website ?? ''}
-                      vendorId={vendor.id}
-                      field="website"
-                      editingCell={editingCell}
-                      onStartEdit={handleStartEdit}
-                      onSave={handleSaveCell}
-                      isLink
-                      placeholder="—"
-                    />
+                    {latestMessage ? (
+                      <div className="text-sm line-clamp-1">
+                        <span className="font-medium">{formatSender(latestMessage.sender)}:</span>{' '}
+                        <span className="text-muted-foreground">
+                          {latestMessage.body.replace(/\n/g, ' ').slice(0, 120)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground/50">No messages yet</span>
+                    )}
                   </TableCell>
-                  <TableCell>
-                    <EditableCell
-                      value={vendor.contact_email}
-                      vendorId={vendor.id}
-                      field="contact_email"
-                      editingCell={editingCell}
-                      onStartEdit={handleStartEdit}
-                      onSave={handleSaveCell}
-                      placeholder="email"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <EditableCell
-                      value={vendor.custom_message ?? ''}
-                      vendorId={vendor.id}
-                      field="custom_message"
-                      editingCell={editingCell}
-                      onStartEdit={handleStartEdit}
-                      onSave={handleSaveCell}
-                      placeholder="—"
-                    />
-                  </TableCell>
+
+                  {/* Status */}
                   <TableCell>
                     {thread ? (
                       <StatusBadge status={thread.status as VendorStatus} />

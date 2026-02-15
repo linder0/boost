@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/sidebar";
+import { Toaster } from "sonner";
 import { Event } from "@/types/database";
 
 const geistSans = Geist({
@@ -47,6 +48,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-hidden`}
         suppressHydrationWarning
       >
+        <Toaster richColors position="bottom-right" />
         {user ? (
           <div className="flex h-screen">
             <Sidebar user={user} events={events} />
