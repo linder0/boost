@@ -55,8 +55,8 @@ export function CSVImport({ eventId }: { eventId: string }) {
         const text = event.target?.result as string
         const rows = parseCSV(text)
         setPreview(rows)
-      } catch (err: any) {
-        setError(err.message || 'Failed to parse CSV file. Please check the format.')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to parse CSV file. Please check the format.')
       }
     }
     reader.readAsText(selectedFile)
@@ -177,8 +177,8 @@ export function CSVImport({ eventId }: { eventId: string }) {
         }))
       )
       router.push(`/events/${eventId}/vendors`)
-    } catch (err: any) {
-      setError(err.message || 'Failed to import vendors')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to import vendors')
     } finally {
       setLoading(false)
     }

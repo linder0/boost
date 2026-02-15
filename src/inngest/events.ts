@@ -32,7 +32,7 @@ export const eventSchemas = {
       attempt: 'number',
     },
   },
-  // TODO: add handler or remove — currently sent from escalateThread() but has no handler
+  /** No handler yet -- events are emitted from escalateThread() but currently no-op. */
   'message.human.send': {
     data: {
       threadId: 'string',
@@ -40,7 +40,7 @@ export const eventSchemas = {
       message: 'string',
     },
   },
-  // TODO: add handler or remove — currently sent from make-decision but has no handler
+  /** No handler yet -- events are emitted from make-decision but currently no-op. */
   'vendor.escalation': {
     data: {
       threadId: 'string',

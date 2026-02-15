@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    // TODO: Verify webhook signature (Svix-style headers) in production
+    // Webhook signature verification (Svix) is skipped for now; enable before production.
     // const svixId = request.headers.get('svix-id')
     // const svixTimestamp = request.headers.get('svix-timestamp')
     // const svixSignature = request.headers.get('svix-signature')
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const matched = await matchInboundMessage(supabase, agentmailThreadId, null, fromEmail)
 
     if (!matched) {
-      console.log(`[agentmail-webhook] No matching thread for email from ${fromEmail}`)
+      console.warn(`[agentmail-webhook] No matching thread for email from ${fromEmail}`)
       return NextResponse.json({ ok: true, skipped: true, reason: 'no matching thread' })
     }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState, useCallback } from 'react'
+import type mapboxgl from 'mapbox-gl'
 
 // NYC Neighborhood boundaries (real polygon data from NYC Open Data)
 const NYC_NEIGHBORHOOD_BOUNDS: Record<string, {
@@ -194,8 +195,8 @@ export function NeighborhoodPicker({
   className = '',
 }: NeighborhoodPickerProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>(null)
-  const mapboxglRef = useRef<any>(null)
+  const mapRef = useRef<mapboxgl.Map | null>(null)
+  const mapboxglRef = useRef<typeof mapboxgl | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hoveredNeighborhood, setHoveredNeighborhood] = useState<string | null>(null)
@@ -253,7 +254,7 @@ export function NeighborhoodPicker({
           }
         })
 
-        map.on('error', (e: any) => {
+        map.on('error', (e: mapboxgl.ErrorEvent & { error: Error }) => {
           console.error('Mapbox error:', e.error)
           setError('Failed to load map')
         })
@@ -280,7 +281,7 @@ export function NeighborhoodPicker({
   }, [accessToken])
 
   // Add neighborhood layers
-  const addNeighborhoodLayers = (map: any) => {
+  const addNeighborhoodLayers = (map: mapboxgl.Map) => {
     Object.entries(NYC_NEIGHBORHOOD_BOUNDS).forEach(([name, data]) => {
       const sourceId = `neighborhood-${name}`
       const fillLayerId = `${sourceId}-fill`

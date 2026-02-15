@@ -176,7 +176,7 @@ export interface ParsedResponse {
   questions: string[];
   sentiment: string | null;
   confidence: ConfidenceLevel;
-  raw_data: any;
+  raw_data: Record<string, unknown>;
   created_at: string;
 }
 
@@ -202,7 +202,7 @@ export interface AutomationLog {
   event_id: string;
   vendor_id: string | null;
   event_type: LogEventType;
-  details: any;
+  details: Record<string, unknown>;
   created_at: string;
 }
 

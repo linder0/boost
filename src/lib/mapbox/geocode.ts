@@ -16,9 +16,21 @@ export interface LocationData {
 }
 
 /**
+ * A Mapbox Geocoding API feature (subset of fields used in this app)
+ */
+export interface MapboxFeature {
+  id?: string
+  place_name?: string
+  text?: string
+  center?: [number, number]
+  place_type?: string[]
+  context?: Array<{ id: string; text: string }>
+}
+
+/**
  * Extract city and neighborhood from a Mapbox feature's context array
  */
-export function extractLocationDetails(feature: any): { city?: string; neighborhood?: string } {
+export function extractLocationDetails(feature: MapboxFeature): { city?: string; neighborhood?: string } {
   const context = feature.context || []
   let city: string | undefined
   let neighborhood: string | undefined
