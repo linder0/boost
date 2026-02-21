@@ -211,9 +211,9 @@ export function EventIntakeForm({ event, onSave }: EventIntakeFormProps) {
     <div className="mx-auto w-full max-w-2xl">
       {!isEditMode && (
         <div className="mb-8">
-          <h1 className="text-2xl font-bold">Plan Your Dinner</h1>
+          <h1 className="text-2xl font-bold">Plan Your Event</h1>
           <p className="text-muted-foreground">
-            Tell us about your event and we&apos;ll find the perfect NYC restaurants
+            Tell us about your event and we&apos;ll find the perfect vendors
           </p>
         </div>
       )}

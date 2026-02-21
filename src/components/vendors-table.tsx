@@ -16,10 +16,19 @@ import { Badge } from './ui/badge'
 import { VendorWithThread, VendorStatus, MessageSender } from '@/types/database'
 import { StatusBadge } from './status-badge'
 import { EmptyState } from './empty-state'
-import { bulkDeleteVendors } from '@/app/actions/vendors'
+import { bulkDeleteVendors, createVendor } from '@/app/actions/vendors'
 import { normalizeJoinResult } from '@/lib/utils'
 import { Checkbox } from './ui/checkbox'
-import { Loader2, Trash2, X } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from './ui/dialog'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Loader2, Plus, Trash2, X } from 'lucide-react'
 
 // ============================================================================
 // Types
@@ -88,6 +97,80 @@ function composeFallbackSummary(vendor: VendorWithThread): string {
 }
 
 // ============================================================================
+// Add Vendor Dialog
+// ============================================================================
+
+function AddVendorDialog({
+  open,
+  onOpenChange,
+  newVendor,
+  setNewVendor,
+  isCreating,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  newVendor: { name: string; category: string; contact_email: string }
+  setNewVendor: (v: { name: string; category: string; contact_email: string }) => void
+  isCreating: boolean
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Vendor</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="vendor-name">Name</Label>
+            <Input
+              id="vendor-name"
+              placeholder="Vendor name"
+              value={newVendor.name}
+              onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="vendor-category">Category</Label>
+            <Input
+              id="vendor-category"
+              placeholder="Vendor (optional)"
+              value={newVendor.category}
+              onChange={(e) => setNewVendor({ ...newVendor, category: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="vendor-email">Contact Email</Label>
+            <Input
+              id="vendor-email"
+              type="email"
+              placeholder="vendor@example.com"
+              value={newVendor.contact_email}
+              onChange={(e) => setNewVendor({ ...newVendor, contact_email: e.target.value })}
+              required
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isCreating}>
+              {isCreating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Adding...</>
+              ) : (
+                'Add Vendor'
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -107,6 +190,29 @@ export function VendorsTable({
   // Selection
   const { selectedIds, toggle: toggleSelection, toggleAll, clear: clearSelection, allSelected, someSelected, isSelected } = useSelection(vendors)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  // Add vendor dialog
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [newVendor, setNewVendor] = useState({ name: '', category: '', contact_email: '' })
+
+  const handleAddVendor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+    try {
+      await createVendor(eventId, {
+        name: newVendor.name,
+        category: newVendor.category || 'Vendor',
+        contact_email: newVendor.contact_email,
+      })
+      setNewVendor({ name: '', category: '', contact_email: '' })
+      setAddDialogOpen(false)
+    } catch (error) {
+      console.error('Failed to create vendor:', error)
+    } finally {
+      setIsCreating(false)
+    }
+  }
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
@@ -138,15 +244,29 @@ export function VendorsTable({
     }
 
     return (
-      <EmptyState
-        variant="dashed"
-        title="No vendors yet"
-        description={description}
-        action={{
-          label: 'Import CSV',
-          onClick: () => router.push(`/events/${eventId}/vendors/import`),
-        }}
-      />
+      <>
+        <EmptyState
+          variant="dashed"
+          title="No vendors yet"
+          description={description}
+          action={{
+            label: 'Import CSV',
+            onClick: () => router.push(`/events/${eventId}/vendors/import`),
+          }}
+          secondaryAction={{
+            label: 'Add Vendor',
+            onClick: () => setAddDialogOpen(true),
+          }}
+        />
+        <AddVendorDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          newVendor={newVendor}
+          setNewVendor={setNewVendor}
+          isCreating={isCreating}
+          onSubmit={handleAddVendor}
+        />
+      </>
     )
   }
 
@@ -159,13 +279,31 @@ export function VendorsTable({
       {/* Header */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Vendors</h2>
-        <Button
-          variant="outline"
-          onClick={() => router.push(`/events/${eventId}/vendors/import`)}
-        >
-          Import CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setAddDialogOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Vendor
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/events/${eventId}/vendors/import`)}
+          >
+            Import CSV
+          </Button>
+        </div>
       </div>
+
+      <AddVendorDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        newVendor={newVendor}
+        setNewVendor={setNewVendor}
+        isCreating={isCreating}
+        onSubmit={handleAddVendor}
+      />
 
       {/* Selection bar */}
       {selectedIds.size > 0 && (
