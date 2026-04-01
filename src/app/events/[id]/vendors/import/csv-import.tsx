@@ -18,8 +18,21 @@ import { bulkCreateVendors } from '@/app/actions/vendors'
 
 interface VendorRow {
   name: string
-  category: string
+  price_per_person: string
+  website: string
   contact_email: string
+  custom_message: string
+}
+
+// Flexible header matching — maps common CSV header names to our fields
+function matchHeader(header: string): keyof VendorRow | null {
+  const h = header.toLowerCase().trim()
+  if (['vendor name', 'vendor', 'name'].includes(h)) return 'name'
+  if (['price per person', 'price', 'price_per_person', 'ppp', 'cost'].includes(h)) return 'price_per_person'
+  if (['link', 'website', 'url', 'site'].includes(h)) return 'website'
+  if (['contact', 'email', 'contact_email', 'contact email'].includes(h)) return 'contact_email'
+  if (['outreach message', 'outreach_message', 'message', 'outreach'].includes(h)) return 'custom_message'
+  return null
 }
 
 export function CSVImport({ eventId }: { eventId: string }) {
@@ -42,37 +55,105 @@ export function CSVImport({ eventId }: { eventId: string }) {
         const text = event.target?.result as string
         const rows = parseCSV(text)
         setPreview(rows)
-      } catch (err) {
-        setError('Failed to parse CSV file. Please check the format.')
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to parse CSV file. Please check the format.')
       }
     }
     reader.readAsText(selectedFile)
   }
 
+  // Full CSV parser that handles multi-line quoted fields
+  const parseCSVRows = (text: string): string[][] => {
+    const rows: string[][] = []
+    let current = ''
+    let inQuotes = false
+    let row: string[] = []
+
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i]
+
+      if (char === '"') {
+        // Handle escaped quotes ("") inside quoted fields
+        if (inQuotes && i + 1 < text.length && text[i + 1] === '"') {
+          current += '"'
+          i++ // skip next quote
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(current.trim())
+        current = ''
+      } else if ((char === '\n' || char === '\r') && !inQuotes) {
+        // Skip \r in \r\n
+        if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
+          i++
+        }
+        row.push(current.trim())
+        if (row.some(cell => cell !== '')) {
+          rows.push(row)
+        }
+        row = []
+        current = ''
+      } else {
+        current += char
+      }
+    }
+
+    // Last row
+    row.push(current.trim())
+    if (row.some(cell => cell !== '')) {
+      rows.push(row)
+    }
+
+    return rows
+  }
+
   const parseCSV = (text: string): VendorRow[] => {
-    const lines = text.trim().split('\n')
-    const headers = lines[0].toLowerCase().split(',').map((h) => h.trim())
+    const rows = parseCSVRows(text)
+    if (rows.length < 2) throw new Error('CSV must have a header row and at least one data row')
 
-    const nameIdx = headers.indexOf('name')
-    const categoryIdx = headers.indexOf('category')
-    const emailIdx = headers.indexOf('email') !== -1 
-      ? headers.indexOf('email') 
-      : headers.indexOf('contact_email')
+    // Parse headers with flexible matching
+    const rawHeaders = rows[0].map((h) => h.replace(/^"|"$/g, ''))
+    const headerMap: { index: number; field: keyof VendorRow }[] = []
 
-    if (nameIdx === -1 || categoryIdx === -1 || emailIdx === -1) {
-      throw new Error('CSV must have Name, Category, and Email columns')
+    for (let i = 0; i < rawHeaders.length; i++) {
+      const field = matchHeader(rawHeaders[i])
+      if (field) {
+        headerMap.push({ index: i, field })
+      }
+    }
+
+    // Require at least name and contact
+    const mappedFields = headerMap.map((h) => h.field)
+    if (!mappedFields.includes('name')) {
+      throw new Error('CSV must have a "Vendor Name" (or "Name") column')
+    }
+    if (!mappedFields.includes('contact_email')) {
+      throw new Error('CSV must have a "Contact" (or "Email") column')
     }
 
     const vendors: VendorRow[] = []
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map((v) => v.trim())
-      if (values.length < 3) continue
+    for (let i = 1; i < rows.length; i++) {
+      const values = rows[i]
 
-      vendors.push({
-        name: values[nameIdx],
-        category: values[categoryIdx],
-        contact_email: values[emailIdx],
-      })
+      const row: VendorRow = {
+        name: '',
+        price_per_person: '',
+        website: '',
+        contact_email: '',
+        custom_message: '',
+      }
+
+      for (const { index, field } of headerMap) {
+        if (index < values.length) {
+          row[field] = values[index]
+        }
+      }
+
+      // Skip rows without a name
+      if (row.name) {
+        vendors.push(row)
+      }
     }
 
     return vendors
@@ -85,10 +166,19 @@ export function CSVImport({ eventId }: { eventId: string }) {
     setError(null)
 
     try {
-      await bulkCreateVendors(eventId, preview)
+      await bulkCreateVendors(
+        eventId,
+        preview.map((v) => ({
+          name: v.name,
+          contact_email: v.contact_email || `${v.name.toLowerCase().replace(/[^a-z0-9]+/g, '.')}@pending.local`,
+          website: v.website || null,
+          custom_message: v.custom_message || null,
+          price_per_person: v.price_per_person || null,
+        }))
+      )
       router.push(`/events/${eventId}/vendors`)
-    } catch (err: any) {
-      setError(err.message || 'Failed to import vendors')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to import vendors')
     } finally {
       setLoading(false)
     }
@@ -99,7 +189,7 @@ export function CSVImport({ eventId }: { eventId: string }) {
       <CardHeader>
         <CardTitle>Import Vendors from CSV</CardTitle>
         <CardDescription>
-          Upload a CSV file with columns: Name, Category, Email
+          Upload a CSV with columns: Vendor Name, Price Per Person, Link, Contact, Outreach Message
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -112,7 +202,7 @@ export function CSVImport({ eventId }: { eventId: string }) {
             onChange={handleFileChange}
           />
           <p className="text-sm text-muted-foreground">
-            Expected format: Name, Category, Email (or Contact_Email)
+            Required columns: Vendor Name, Contact. Optional: Price Per Person, Link, Outreach Message.
           </p>
         </div>
 
@@ -132,17 +222,34 @@ export function CSVImport({ eventId }: { eventId: string }) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Email</TableHead>
+                      <TableHead>Vendor Name</TableHead>
+                      <TableHead>Price / Person</TableHead>
+                      <TableHead>Link</TableHead>
+                      <TableHead>Contact</TableHead>
+                      <TableHead>Outreach Message</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {preview.map((vendor, idx) => (
                       <TableRow key={idx}>
-                        <TableCell>{vendor.name}</TableCell>
-                        <TableCell>{vendor.category}</TableCell>
-                        <TableCell>{vendor.contact_email}</TableCell>
+                        <TableCell className="font-medium">{vendor.name}</TableCell>
+                        <TableCell>{vendor.price_per_person || '—'}</TableCell>
+                        <TableCell>
+                          {vendor.website ? (
+                            <a
+                              href={vendor.website}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline truncate block max-w-[200px]"
+                            >
+                              {vendor.website}
+                            </a>
+                          ) : '—'}
+                        </TableCell>
+                        <TableCell>{vendor.contact_email || '—'}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">
+                          {vendor.custom_message || '—'}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

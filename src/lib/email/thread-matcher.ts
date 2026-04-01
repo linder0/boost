@@ -1,13 +1,33 @@
-import { createClient } from '@/lib/supabase/server'
+import { SupabaseClient } from '@supabase/supabase-js'
 
+/**
+ * Match an inbound message to a vendor thread.
+ * Tries agentmail_thread_id first, then gmail_thread_id, then vendor email.
+ *
+ * Accepts a Supabase client so it works in both cookie-based (server actions)
+ * and service-role (webhook) contexts.
+ */
 export async function matchInboundMessage(
+  supabase: SupabaseClient,
+  agentmailThreadId: string | null,
   gmailThreadId: string | null,
   fromEmail: string,
-  toEmail: string
 ) {
-  const supabase = await createClient()
 
-  // Try to match by gmail_thread_id first
+  // Try to match by agentmail_thread_id first
+  if (agentmailThreadId) {
+    const { data: thread } = await supabase
+      .from('vendor_threads')
+      .select('*, vendors(*)')
+      .eq('agentmail_thread_id', agentmailThreadId)
+      .single()
+
+    if (thread) {
+      return thread
+    }
+  }
+
+  // Try to match by gmail_thread_id (legacy)
   if (gmailThreadId) {
     const { data: thread } = await supabase
       .from('vendor_threads')
@@ -32,11 +52,11 @@ export async function matchInboundMessage(
       ? vendor.vendor_threads[0]
       : vendor.vendor_threads
 
-    // Update the thread with the gmail_thread_id for future matches
-    if (gmailThreadId && thread) {
+    // Store the agentmail_thread_id for future matches
+    if (agentmailThreadId && thread) {
       await supabase
         .from('vendor_threads')
-        .update({ gmail_thread_id: gmailThreadId })
+        .update({ agentmail_thread_id: agentmailThreadId })
         .eq('id', thread.id)
     }
 
@@ -48,17 +68,4 @@ export async function matchInboundMessage(
 
   // No match found
   return null
-}
-
-export async function getWaitingVendorEmails() {
-  const supabase = await createClient()
-
-  const { data: vendors } = await supabase
-    .from('vendors')
-    .select('contact_email, vendor_threads!inner(status)')
-    .eq('vendor_threads.status', 'WAITING')
-
-  if (!vendors) return []
-
-  return vendors.map((v) => v.contact_email)
 }

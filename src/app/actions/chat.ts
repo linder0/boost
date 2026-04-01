@@ -53,16 +53,3 @@ export async function saveChatMessage(
 
   return ensureFound(message, error, 'Failed to save chat message') as ChatMessage
 }
-
-export async function clearChatHistory(eventId: string): Promise<void> {
-  validateUUID(eventId, 'event ID')
-
-  const { supabase } = await getAuthenticatedClient()
-
-  const { error } = await supabase
-    .from('chat_messages')
-    .delete()
-    .eq('event_id', eventId)
-
-  handleSupabaseError(error, 'Failed to clear chat history')
-}

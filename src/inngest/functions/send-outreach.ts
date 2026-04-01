@@ -1,11 +1,15 @@
 import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
-import { sendEmail } from '@/lib/gmail/operations'
+import { sendEmail } from '@/lib/agentmail/operations'
+import { ensureUserInbox } from '@/lib/agentmail/inbox'
 import { generateOutreachEmail, generateOutreachSubject } from '@/lib/templates/outreach'
-import { appendAutomationHistory, storeMessage, logAutomation, updateThreadStatus } from '../utils'
+import {
+  appendAutomationHistory, storeMessage, logAutomation, updateThreadStatus,
+  FIRST_FOLLOWUP_DELAY_DAYS, daysToMs,
+} from '../utils'
 
 export const sendOutreach = inngest.createFunction(
-  { id: 'send-outreach' },
+  { id: 'send-outreach', retries: 2 },
   { event: 'vendor.outreach.start' },
   async ({ event, step }) => {
     const { vendorId, userId } = event.data
@@ -30,7 +34,6 @@ export const sendOutreach = inngest.createFunction(
     // Check if outreach is approved
     const thread = vendorData.vendor_threads
     if (!thread?.outreach_approved) {
-      // Outreach not approved - skip sending
       return {
         success: false,
         skipped: true,
@@ -39,13 +42,25 @@ export const sendOutreach = inngest.createFunction(
       }
     }
 
+    // Ensure user has an AgentMail inbox
+    const inboxId = await step.run('ensure-inbox', async () => {
+      const supabase = await createClient()
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('name')
+        .eq('user_id', userId)
+        .single()
+
+      return await ensureUserInbox(userId, profile?.name || 'VROOM Planner')
+    })
+
     // Use custom message if available, otherwise generate from template
     const emailBody = vendorData.custom_message || generateOutreachEmail(vendorData.events, vendorData)
     const emailSubject = generateOutreachSubject(vendorData.events)
 
-    // Send email via Gmail
+    // Send email via AgentMail
     const sentMessage = await step.run('send-email', async () => {
-      return await sendEmail(userId, {
+      return await sendEmail(inboxId, {
         to: vendorData.contact_email,
         subject: emailSubject,
         body: emailBody,
@@ -56,28 +71,26 @@ export const sendOutreach = inngest.createFunction(
     const threadId = await step.run('store-message', async () => {
       const supabase = await createClient()
 
-      // Store the message
       await storeMessage(supabase, {
         thread_id: thread.id,
         sender: 'SYSTEM',
         body: emailBody,
-        gmail_message_id: sentMessage.id || null,
+        agentmail_message_id: sentMessage.id || null,
         inbound: false,
       })
 
-      // Append to automation history and update thread
       const automationHistory = appendAutomationHistory(
         thread.automation_history,
         'OUTREACH',
         {
-          gmail_message_id: sentMessage.id,
+          agentmail_message_id: sentMessage.id,
           to: vendorData.contact_email,
         }
       )
 
       await updateThreadStatus(supabase, thread.id, {
         status: 'WAITING',
-        gmail_thread_id: sentMessage.threadId || null,
+        agentmail_thread_id: sentMessage.threadId || null,
         automation_history: automationHistory,
       })
 
@@ -95,13 +108,12 @@ export const sendOutreach = inngest.createFunction(
         details: {
           to: vendorData.contact_email,
           subject: emailSubject,
-          gmail_message_id: sentMessage.id,
+          agentmail_message_id: sentMessage.id,
         },
       })
     })
 
     // Schedule follow-up for 3 business days later
-    // Follow-ups auto-send (no approval needed) unless escalation occurs
     await step.sendEvent('schedule-followup', {
       name: 'followup.scheduled',
       data: {
@@ -110,7 +122,7 @@ export const sendOutreach = inngest.createFunction(
         userId,
         attempt: 1,
       },
-      ts: Date.now() + 3 * 24 * 60 * 60 * 1000, // 3 days
+      ts: Date.now() + daysToMs(FIRST_FOLLOWUP_DELAY_DAYS),
     })
 
     return { success: true, messageId: sentMessage.id }

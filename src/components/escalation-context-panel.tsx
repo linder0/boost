@@ -11,14 +11,15 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from './ui/accordion'
-import { 
-  VendorThread, 
-  ParsedResponse, 
+import {
+  VendorThread,
+  ParsedResponse,
   AutomationStep,
   SuggestedAction,
   EscalationCategory,
 } from '@/types/database'
-import { formatDistanceToNow, format } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
+import { getConfidenceVariant } from './status-badge'
 
 // ============================================================================
 // Types
@@ -111,7 +112,7 @@ export function EscalationContextPanel({
   const [customMessage, setCustomMessage] = useState('')
   const [selectedAction, setSelectedAction] = useState<SuggestedAction | null>(null)
 
-  const suggestedActions = thread.decision 
+  const suggestedActions = thread.decision
     ? (parsedResponse?.raw_data?.suggestedActions as SuggestedAction[] || [])
     : []
 
@@ -120,7 +121,7 @@ export function EscalationContextPanel({
   const handleSendResponse = async () => {
     const messageToSend = selectedAction?.draftMessage || customMessage
     if (!messageToSend.trim()) return
-    
+
     await onSendResponse(messageToSend)
     setCustomMessage('')
     setSelectedAction(null)
@@ -228,10 +229,7 @@ export function EscalationContextPanel({
             <div className="flex gap-4 pt-2 border-t">
               <div>
                 <p className="text-xs font-medium text-muted-foreground">Confidence</p>
-                <Badge 
-                  variant={parsedResponse.confidence === 'HIGH' ? 'default' : 'secondary'}
-                  className="mt-1"
-                >
+                <Badge variant={getConfidenceVariant(parsedResponse.confidence)} className="mt-1">
                   {parsedResponse.confidence}
                 </Badge>
               </div>
@@ -262,8 +260,8 @@ export function EscalationContextPanel({
               <div
                 key={i}
                 className={`p-3 rounded-md border cursor-pointer transition-colors ${
-                  selectedAction === action 
-                    ? 'border-primary bg-primary/5' 
+                  selectedAction === action
+                    ? 'border-primary bg-primary/5'
                     : 'hover:bg-muted'
                 }`}
                 onClick={() => setSelectedAction(action === selectedAction ? null : action)}
@@ -274,7 +272,7 @@ export function EscalationContextPanel({
                     <Badge variant="outline" className="text-xs capitalize">
                       {action.type}
                     </Badge>
-                    <Badge 
+                    <Badge
                       variant={action.confidence >= 80 ? 'default' : 'secondary'}
                       className="text-xs"
                     >
@@ -367,8 +365,8 @@ export function EscalationContextPanel({
             <AccordionContent>
               <div className="space-y-2 pb-2">
                 {automationHistory.map((step, i) => (
-                  <div 
-                    key={i} 
+                  <div
+                    key={i}
                     className="flex items-start gap-2 text-sm"
                   >
                     <span className="shrink-0">{getAutomationStepIcon(step.type)}</span>

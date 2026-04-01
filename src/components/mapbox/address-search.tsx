@@ -64,7 +64,7 @@ export function AddressSearch({
         const data = await response.json()
         if (data.features) {
           setSuggestions(
-            data.features.map((f: any) => ({
+            data.features.map((f: Suggestion) => ({
               id: f.id,
               place_name: f.place_name,
               center: f.center,

@@ -28,7 +28,7 @@ WHERE id IN (
 
 -- Add unique constraint to prevent duplicate vendors per event
 -- Using contact_email as the deduplication key (case-insensitive)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_event_email_unique 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_event_email_unique
 ON vendors(event_id, LOWER(contact_email));
 
 -- Add index for google_place_id lookups (for deduplication)

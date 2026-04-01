@@ -175,12 +175,13 @@ export function Sidebar({ user, events = [] }: SidebarProps) {
     <aside className={`flex h-screen flex-col bg-sidebar text-sidebar-foreground transition-all duration-300 overflow-hidden ${isCollapsed ? 'w-[68px]' : 'w-64'}`}>
       {/* Logo and Toggle */}
       <div className="relative flex items-center h-14 mt-4 px-3.5">
-        {/* Full VROOM logo - hidden when collapsed */}
+        {/* Full VROOM Select logo - hidden when collapsed */}
         <Link
           href="/events"
           className={`flex items-center h-10 px-3 cursor-pointer whitespace-nowrap transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           <span className="text-xl text-sidebar-foreground" style={{ fontFamily: 'var(--font-brand)', fontWeight: 700, fontStyle: 'italic' }}>VROOM</span>
+          <span className="ml-1 text-sm text-sidebar-foreground/70 font-medium">Select</span>
         </Link>
 
         {/* Small "V" logo button - shown when collapsed, fixed position to prevent sliding */}

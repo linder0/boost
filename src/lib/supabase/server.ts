@@ -1,4 +1,5 @@
-import { createServerClient, SupabaseClient } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient, SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { User, PostgrestError } from '@supabase/supabase-js'
 import { Event } from '@/types/database'
@@ -100,6 +101,18 @@ export async function verifyEventOwnership(
   }
 
   return event as Event
+}
+
+/**
+ * Creates a Supabase admin client using the service role key.
+ * Use this in server-side contexts that don't have a user session
+ * (webhooks, background jobs, etc.)
+ */
+export function createServiceRoleClient() {
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 }
 
 /**

@@ -1,29 +1,28 @@
 /**
  * Entity Module
- * Central configuration and utilities for venues and vendors
+ * VROOM Select: Restaurant-focused configuration and utilities
  */
 
 export {
   // Types
   type EntityCategory,
-  type EntityType,
   type SearchTypeConfig,
   type EntityTypeConfig,
-  
+  type CuisineType,
+  type NYCNeighborhood,
+
   // Configuration
   ENTITY_CATEGORY_CONFIG,
   SEARCH_TYPE_CONFIG,
-  CATEGORY_SORT_ORDER,
-  
+  CUISINE_TYPES,
+  NYC_NEIGHBORHOODS,
+
   // Utility functions
   getEntityConfig,
   getSearchConfig,
-  getCategoryFromSearchType,
   getCategoryLabel,
+  getSearchTypes,
+  getSearchTypesForSource,
   sortCategories,
-  isVenueCategory,
-  getVenueSearchTypes,
-  getVendorSearchTypes,
-  getSearchTypesForCategory,
   groupByCategory,
 } from './config'

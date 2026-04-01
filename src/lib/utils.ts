@@ -155,6 +155,20 @@ export function buildEmailSignature(profile: {
 }
 
 /**
+ * Extract email address from various formats:
+ * - "Name <email@example.com>" -> "email@example.com"
+ * - "email@example.com" -> "email@example.com"
+ * - ["email@example.com"] -> "email@example.com"
+ */
+export function extractEmail(from: string | string[] | undefined): string | null {
+  if (!from) return null
+  const raw = Array.isArray(from) ? from[0] : from
+  if (!raw) return null
+  const match = raw.match(/<(.+?)>/)
+  return match ? match[1] : raw.trim()
+}
+
+/**
  * Group vendors by their thread status for summary displays.
  */
 export function groupVendorsByStatus<T extends { name: string; vendor_threads?: { status: string } | null }>(

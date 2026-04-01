@@ -5,6 +5,7 @@ export {
   getAuthenticatedClient,
   verifyEventOwnership,
   createVendorThreads,
+  createServiceRoleClient,
   handleSupabaseError,
   ensureFound,
 } from './server'

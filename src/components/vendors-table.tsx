@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState } from 'react'
+import { useSelection } from '@/hooks/use-selection'
 import { useRouter } from 'next/navigation'
-import { formatDistanceToNow } from 'date-fns'
 import {
   Table,
   TableBody,
@@ -12,365 +12,280 @@ import {
   TableRow,
 } from './ui/table'
 import { Button } from './ui/button'
-import { Input } from './ui/input'
 import { Badge } from './ui/badge'
-import { Progress } from './ui/progress'
-import { VendorWithThread, VendorStatus, DecisionOutcome, ConfidenceLevel } from '@/types/database'
-import { StatusBadge, DecisionBadge, ConfidenceBadge } from './status-badge'
+import { VendorWithThread, VendorStatus, MessageSender } from '@/types/database'
+import { StatusBadge } from './status-badge'
 import { EmptyState } from './empty-state'
-import { VendorNameDisplay, VendorEmailDisplay } from './vendor-display'
-import { updateVendor, regenerateVendorMessage } from '@/app/actions/vendors'
+import { bulkDeleteVendors, createVendor } from '@/app/actions/vendors'
 import { normalizeJoinResult } from '@/lib/utils'
-// Note: startOutreachByCategory is not used - outreach is simulated for demo purposes
-import { sortCategories, groupByCategory } from '@/lib/entities'
-import { Mail, CheckCircle2, Loader2 } from 'lucide-react'
+import { Checkbox } from './ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from './ui/dialog'
+import { Input } from './ui/input'
+import { Label } from './ui/label'
+import { Loader2, Plus, Trash2, X } from 'lucide-react'
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface VendorsTableProps {
   vendors: VendorWithThread[]
   eventId: string
   onVendorClick: (vendor: VendorWithThread) => void
+  eventName?: string
+  city?: string
+  headcount?: number
+  budget?: number
+  neighborhoods?: string[]
+  cuisines?: string[]
 }
 
-// Outreach simulation state
-interface OutreachSimulation {
-  isActive: boolean
-  category: string | null
-  currentVendorId: string | null
-  processedVendorIds: Set<string>
-  progress: number
-  totalCount: number
-}
+// ============================================================================
+// Helpers
+// ============================================================================
 
-// Helper to check if vendor is confirmed (VIABLE or DONE)
-function isConfirmed(vendor: VendorWithThread): boolean {
+/**
+ * Get the most recent message from a vendor's thread messages.
+ */
+function getLatestMessage(vendor: VendorWithThread): { sender: MessageSender; body: string } | null {
   const thread = normalizeJoinResult(vendor.vendor_threads)
-  return thread?.status === 'VIABLE' || thread?.status === 'DONE'
+  const messages = (thread as Record<string, unknown> | null)?.messages as
+    | { body: string; sender: MessageSender; created_at: string }[]
+    | undefined
+
+  if (!messages || messages.length === 0) return null
+
+  const sorted = [...messages].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+
+  return { sender: sorted[0].sender, body: sorted[0].body }
 }
 
-// Helper to check if vendor is rejected
-function isRejected(vendor: VendorWithThread): boolean {
-  const thread = normalizeJoinResult(vendor.vendor_threads)
-  return thread?.status === 'REJECTED'
+/**
+ * Format sender label for display.
+ */
+function formatSender(sender: MessageSender): string {
+  switch (sender) {
+    case 'SYSTEM':
+      return 'You'
+    case 'HUMAN':
+      return 'You'
+    case 'VENDOR':
+      return 'Vendor'
+    default:
+      return sender
+  }
 }
 
-export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTableProps) {
-  const router = useRouter()
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editData, setEditData] = useState<Record<string, string>>({})
-  const [loading, setLoading] = useState(false)
-  const [regeneratingId, setRegeneratingId] = useState<string | null>(null)
+/**
+ * Client-side fallback summary when vendor.summary is not yet generated.
+ */
+function composeFallbackSummary(vendor: VendorWithThread): string {
+  const parts: string[] = []
+  if (vendor.cuisine) parts.push(vendor.cuisine)
+  if (vendor.price_per_person) parts.push(vendor.price_per_person)
+  if (vendor.has_private_dining) parts.push('Private dining')
+  if (parts.length > 0) return parts.join(' · ')
+  return vendor.category || 'Vendor'
+}
 
-  // Outreach simulation state
-  const [simulation, setSimulation] = useState<OutreachSimulation>({
-    isActive: false,
-    category: null,
-    currentVendorId: null,
-    processedVendorIds: new Set(),
-    progress: 0,
-    totalCount: 0,
-  })
+// ============================================================================
+// Add Vendor Dialog
+// ============================================================================
 
-  // Simulate outreach for a category (UI only - no actual emails sent)
-  const simulateOutreach = useCallback(async (category: string, vendorsToProcess: VendorWithThread[]) => {
-    const notContactedVendors = vendorsToProcess.filter(v => {
-      const thread = normalizeJoinResult(v.vendor_threads)
-      return thread?.status === 'NOT_CONTACTED'
-    })
-
-    if (notContactedVendors.length === 0) return
-
-    // Initialize simulation
-    setSimulation({
-      isActive: true,
-      category,
-      currentVendorId: null,
-      processedVendorIds: new Set(),
-      progress: 0,
-      totalCount: notContactedVendors.length,
-    })
-
-    // Process each vendor with a delay for visual effect
-    for (let i = 0; i < notContactedVendors.length; i++) {
-      const vendor = notContactedVendors[i]
-
-      // Set current vendor (sending state)
-      setSimulation(prev => ({
-        ...prev,
-        currentVendorId: vendor.id,
-        progress: Math.round(((i) / notContactedVendors.length) * 100),
-      }))
-
-      // Wait a bit to show "sending" state
-      await new Promise(resolve => setTimeout(resolve, 800 + Math.random() * 400))
-
-      // Mark as processed
-      setSimulation(prev => ({
-        ...prev,
-        processedVendorIds: new Set([...prev.processedVendorIds, vendor.id]),
-        progress: Math.round(((i + 1) / notContactedVendors.length) * 100),
-      }))
-
-      // Small delay before next
-      await new Promise(resolve => setTimeout(resolve, 200))
-    }
-
-    // Complete simulation
-    await new Promise(resolve => setTimeout(resolve, 500))
-    setSimulation({
-      isActive: false,
-      category: null,
-      currentVendorId: null,
-      processedVendorIds: new Set(),
-      progress: 0,
-      totalCount: 0,
-    })
-  }, [])
-
-  // Separate vendors into confirmed, pipeline, and rejected
-  const { confirmed, pipeline, rejected } = useMemo(() => {
-    const confirmed: VendorWithThread[] = []
-    const pipeline: VendorWithThread[] = []
-    const rejected: VendorWithThread[] = []
-
-    vendors.forEach(vendor => {
-      if (isConfirmed(vendor)) {
-        confirmed.push(vendor)
-      } else if (isRejected(vendor)) {
-        rejected.push(vendor)
-      } else {
-        pipeline.push(vendor)
-      }
-    })
-
-    return { confirmed, pipeline, rejected }
-  }, [vendors])
-
-  // Group each section by category
-  const confirmedByCategory = useMemo(() => groupByCategory(confirmed), [confirmed])
-  const pipelineByCategory = useMemo(() => groupByCategory(pipeline), [pipeline])
-
-  const handleRegenerateMessage = async (vendorId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setRegeneratingId(vendorId)
-    try {
-      await regenerateVendorMessage(vendorId)
-    } catch (error) {
-      console.error('Failed to regenerate message:', error)
-    } finally {
-      setRegeneratingId(null)
-    }
-  }
-
-  const handleSaveEdit = async (vendorId: string) => {
-    try {
-      await updateVendor(vendorId, editData)
-      setEditingId(null)
-      setEditData({})
-    } catch (error) {
-      console.error('Failed to update vendor:', error)
-    }
-  }
-
-  const renderVendorRow = (vendor: VendorWithThread) => {
-    const thread = normalizeJoinResult(vendor.vendor_threads)
-    const isEditing = editingId === vendor.id
-
-    // Simulation state for this vendor
-    const isSending = simulation.currentVendorId === vendor.id
-    const wasSent = simulation.processedVendorIds.has(vendor.id)
-    const isInActiveSimulation = simulation.isActive && simulation.category === vendor.category
-
-    return (
-      <TableRow
-        key={vendor.id}
-        className={`cursor-pointer hover:bg-muted transition-all duration-300 ${
-          isSending ? 'bg-blue-50 dark:bg-blue-950/30' : ''
-        } ${wasSent ? 'bg-green-50 dark:bg-green-950/20' : ''}`}
-        onClick={() => !isEditing && !simulation.isActive && onVendorClick(vendor)}
-      >
-        <TableCell>
-          {isEditing ? (
+function AddVendorDialog({
+  open,
+  onOpenChange,
+  newVendor,
+  setNewVendor,
+  isCreating,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  newVendor: { name: string; category: string; contact_email: string }
+  setNewVendor: (v: { name: string; category: string; contact_email: string }) => void
+  isCreating: boolean
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Vendor</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={onSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="vendor-name">Name</Label>
             <Input
-              value={editData.name ?? vendor.name}
-              onChange={(e) =>
-                setEditData({ ...editData, name: e.target.value })
-              }
-              onClick={(e) => e.stopPropagation()}
+              id="vendor-name"
+              placeholder="Vendor name"
+              value={newVendor.name}
+              onChange={(e) => setNewVendor({ ...newVendor, name: e.target.value })}
+              required
             />
-          ) : (
-            <VendorNameDisplay
-              name={vendor.name}
-              rating={vendor.rating}
-              website={vendor.website}
-              discoverySource={vendor.discovery_source}
-              showDiscoveryBadge
-            />
-          )}
-        </TableCell>
-        <TableCell>
-          {isEditing ? (
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="vendor-category">Category</Label>
             <Input
-              value={editData.contact_email ?? vendor.contact_email}
-              onChange={(e) =>
-                setEditData({ ...editData, contact_email: e.target.value })
-              }
-              onClick={(e) => e.stopPropagation()}
+              id="vendor-category"
+              placeholder="Vendor (optional)"
+              value={newVendor.category}
+              onChange={(e) => setNewVendor({ ...newVendor, category: e.target.value })}
             />
-          ) : (
-            <VendorEmailDisplay
-              email={vendor.contact_email}
-              emailConfidence={vendor.email_confidence}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="vendor-email">Contact Email</Label>
+            <Input
+              id="vendor-email"
+              type="email"
+              placeholder="vendor@example.com"
+              value={newVendor.contact_email}
+              onChange={(e) => setNewVendor({ ...newVendor, contact_email: e.target.value })}
+              required
             />
-          )}
-        </TableCell>
-        <TableCell>
-          {isSending ? (
-            <Badge className="bg-blue-500 text-white animate-pulse">
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              Sending...
-            </Badge>
-          ) : wasSent ? (
-            <Badge className="bg-green-500 text-white">
-              <CheckCircle2 className="w-3 h-3 mr-1" />
-              Sent
-            </Badge>
-          ) : thread ? (
-            <StatusBadge status={thread.status as VendorStatus} />
-          ) : null}
-        </TableCell>
-        <TableCell>
-          {thread?.decision && (
-            <DecisionBadge decision={thread.decision as DecisionOutcome} />
-          )}
-        </TableCell>
-        <TableCell>
-          {thread?.last_touch
-            ? formatDistanceToNow(new Date(thread.last_touch), {
-                addSuffix: true,
-              })
-            : '-'}
-        </TableCell>
-      </TableRow>
-    )
-  }
-
-  const handleCategoryOutreach = async (category: string) => {
-    if (simulation.isActive) return
-
-    const categoryVendors = pipelineByCategory[category] || []
-    await simulateOutreach(category, categoryVendors)
-  }
-
-  const renderCategorySection = (categoryGroups: Record<string, VendorWithThread[]>, showActions: boolean = true) => {
-    const categories = sortCategories(Object.keys(categoryGroups))
-
-    return categories.map(category => {
-      const categoryVendors = categoryGroups[category]
-      const notContactedCount = categoryVendors.filter(v => {
-        const thread = normalizeJoinResult(v.vendor_threads)
-        return thread?.status === 'NOT_CONTACTED'
-      }).length
-
-      const isSimulatingThisCategory = simulation.isActive && simulation.category === category
-
-      return (
-        <div key={category} className="mb-6 last:mb-0">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h4 className="text-sm font-medium text-muted-foreground">{category}s ({categoryVendors.length})</h4>
-              {isSimulatingThisCategory && (
-                <div className="flex items-center gap-2 text-sm text-blue-600">
-                  <Mail className="w-4 h-4 animate-pulse" />
-                  <span>Sending {simulation.processedVendorIds.size} of {simulation.totalCount}...</span>
-                </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isCreating}>
+              {isCreating ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Adding...</>
+              ) : (
+                'Add Vendor'
               )}
-            </div>
-            {showActions && (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push(`/events/${eventId}/vendors/discover?category=${encodeURIComponent(category)}`)}
-                  disabled={simulation.isActive}
-                >
-                  Discover {category}s
-                </Button>
-                {notContactedCount > 0 && (
-                  <Button
-                    size="sm"
-                    onClick={() => handleCategoryOutreach(category)}
-                    disabled={simulation.isActive}
-                  >
-                    {isSimulatingThisCategory ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      `Start Outreach (${notContactedCount})`
-                    )}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
-          {/* Progress bar during simulation */}
-          {isSimulatingThisCategory && (
-            <div className="mb-3">
-              <Progress value={simulation.progress} className="h-2" />
-            </div>
-          )}
+// ============================================================================
+// Main Component
+// ============================================================================
 
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Contact Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Decision</TableHead>
-                  <TableHead>Last Touch</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {categoryVendors.map(renderVendorRow)}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )
-    })
+export function VendorsTable({
+  vendors,
+  eventId,
+  onVendorClick,
+  eventName,
+  city,
+  headcount,
+  budget,
+  neighborhoods,
+  cuisines,
+}: VendorsTableProps) {
+  const router = useRouter()
+
+  // Selection
+  const { selectedIds, toggle: toggleSelection, toggleAll, clear: clearSelection, allSelected, someSelected, isSelected } = useSelection(vendors)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Add vendor dialog
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [newVendor, setNewVendor] = useState({ name: '', category: '', contact_email: '' })
+
+  const handleAddVendor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+    try {
+      await createVendor(eventId, {
+        name: newVendor.name,
+        category: newVendor.category || 'Vendor',
+        contact_email: newVendor.contact_email,
+      })
+      setNewVendor({ name: '', category: '', contact_email: '' })
+      setAddDialogOpen(false)
+    } catch (error) {
+      console.error('Failed to create vendor:', error)
+    } finally {
+      setIsCreating(false)
+    }
   }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    setIsDeleting(true)
+    try {
+      await bulkDeleteVendors(Array.from(selectedIds), eventId)
+      clearSelection()
+    } catch (error) {
+      console.error('Failed to delete vendors:', error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  // ============================================================================
+  // Empty state
+  // ============================================================================
 
   if (vendors.length === 0) {
+    let description = 'Add vendors manually or import from CSV'
+    if (city && headcount) {
+      const location = neighborhoods?.length
+        ? `${neighborhoods.join(', ')} (${city})`
+        : city
+      const cuisineText = cuisines?.length
+        ? ` serving ${cuisines.join(', ')} cuisine`
+        : ''
+      description = `Find food vendors in ${location} for ${headcount} guests${budget ? ` with a $${budget.toLocaleString()} budget` : ''}${cuisineText}`
+    }
+
     return (
-      <EmptyState
-        variant="dashed"
-        title="No vendors yet"
-        description="Discover venues based on your event criteria or import from CSV"
-        action={{
-          label: 'Discover',
-          onClick: () => router.push(`/events/${eventId}/vendors/discover`),
-        }}
-        secondaryAction={{
-          label: 'Import CSV',
-          onClick: () => router.push(`/events/${eventId}/vendors/import`),
-        }}
-      />
+      <>
+        <EmptyState
+          variant="dashed"
+          title="No vendors yet"
+          description={description}
+          action={{
+            label: 'Import CSV',
+            onClick: () => router.push(`/events/${eventId}/vendors/import`),
+          }}
+          secondaryAction={{
+            label: 'Add Vendor',
+            onClick: () => setAddDialogOpen(true),
+          }}
+        />
+        <AddVendorDialog
+          open={addDialogOpen}
+          onOpenChange={setAddDialogOpen}
+          newVendor={newVendor}
+          setNewVendor={setNewVendor}
+          isCreating={isCreating}
+          onSubmit={handleAddVendor}
+        />
+      </>
     )
   }
 
+  // ============================================================================
+  // Render
+  // ============================================================================
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Vendors</h2>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() => router.push(`/events/${eventId}/vendors/discover`)}
+            onClick={() => setAddDialogOpen(true)}
           >
-            Discover All
+            <Plus className="w-4 h-4 mr-2" />
+            Add Vendor
           </Button>
           <Button
             variant="outline"
@@ -381,63 +296,115 @@ export function VendorsTable({ vendors, eventId, onVendorClick }: VendorsTablePr
         </div>
       </div>
 
-      {/* Confirmed Section */}
-      {confirmed.length > 0 && (
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <h3 className="text-lg font-semibold">Confirmed</h3>
-            <Badge variant="default" className="bg-green-600">{confirmed.length}</Badge>
+      <AddVendorDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        newVendor={newVendor}
+        setNewVendor={setNewVendor}
+        isCreating={isCreating}
+        onSubmit={handleAddVendor}
+      />
+
+      {/* Selection bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-lg border bg-muted/50 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium">
+              {selectedIds.size} vendor{selectedIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <Button variant="ghost" size="sm" onClick={clearSelection} className="h-8 px-2 text-muted-foreground">
+              <X className="w-4 h-4 mr-1" />
+              Clear
+            </Button>
           </div>
-          {renderCategorySection(confirmedByCategory, false)}
+          <Button variant="destructive" size="sm" onClick={handleBulkDelete} disabled={isDeleting}>
+            {isDeleting ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Deleting...</>
+            ) : (
+              <><Trash2 className="w-4 h-4 mr-2" /> Delete Selected</>
+            )}
+          </Button>
         </div>
       )}
 
-      {/* Pipeline Section */}
-      {pipeline.length > 0 && (
-        <div>
-          <div className="mb-3 flex items-center gap-2">
-            <h3 className="text-lg font-semibold">Pipeline</h3>
-            <Badge variant="secondary">{pipeline.length}</Badge>
-          </div>
-          {renderCategorySection(pipelineByCategory)}
-        </div>
-      )}
+      {/* Read-only table */}
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox
+                  checked={allSelected}
+                  data-state={someSelected ? 'indeterminate' : allSelected ? 'checked' : 'unchecked'}
+                  onCheckedChange={toggleAll}
+                />
+              </TableHead>
+              <TableHead className="min-w-[160px]">Name</TableHead>
+              <TableHead className="min-w-[200px]">About</TableHead>
+              <TableHead className="min-w-[240px]">Latest Message</TableHead>
+              <TableHead className="w-[110px]">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {vendors.map(vendor => {
+              const thread = normalizeJoinResult(vendor.vendor_threads)
+              const selected = isSelected(vendor.id)
+              const latestMessage = getLatestMessage(vendor)
+              const aboutText = vendor.summary || composeFallbackSummary(vendor)
 
-      {/* Rejected Section (collapsed by default) */}
-      {rejected.length > 0 && (
-        <details className="group">
-          <summary className="mb-3 flex cursor-pointer items-center gap-2 list-none">
-            <h3 className="text-lg font-semibold text-muted-foreground">Rejected</h3>
-            <Badge variant="outline" className="text-muted-foreground">{rejected.length}</Badge>
-            <span className="text-xs text-muted-foreground group-open:hidden">(click to expand)</span>
-          </summary>
-          <div className="rounded-md border opacity-60">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Contact Email</TableHead>
-                  <TableHead>Reason</TableHead>
+              return (
+                <TableRow
+                  key={vendor.id}
+                  className={`${selected ? 'bg-muted/50' : ''} hover:bg-muted/30 cursor-pointer`}
+                  onClick={() => onVendorClick(vendor)}
+                >
+                  <TableCell className="w-[40px]" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selected}
+                      onCheckedChange={() => toggleSelection(vendor.id)}
+                    />
+                  </TableCell>
+
+                  {/* Name */}
+                  <TableCell>
+                    <span className="text-sm font-medium">{vendor.name}</span>
+                  </TableCell>
+
+                  {/* About */}
+                  <TableCell>
+                    <span className="text-sm text-muted-foreground line-clamp-1">
+                      {aboutText}
+                    </span>
+                  </TableCell>
+
+                  {/* Latest Message */}
+                  <TableCell>
+                    {latestMessage ? (
+                      <div className="text-sm line-clamp-1">
+                        <span className="font-medium">{formatSender(latestMessage.sender)}:</span>{' '}
+                        <span className="text-muted-foreground">
+                          {latestMessage.body.replace(/\n/g, ' ').slice(0, 120)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-muted-foreground/50">No messages yet</span>
+                    )}
+                  </TableCell>
+
+                  {/* Status */}
+                  <TableCell>
+                    {thread ? (
+                      <StatusBadge status={thread.status as VendorStatus} />
+                    ) : (
+                      <Badge variant="outline" className="text-muted-foreground">New</Badge>
+                    )}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rejected.map(vendor => {
-                  const thread = normalizeJoinResult(vendor.vendor_threads)
-                  return (
-                    <TableRow key={vendor.id} className="cursor-pointer hover:bg-muted" onClick={() => onVendorClick(vendor)}>
-                      <TableCell className="font-medium">{vendor.name}</TableCell>
-                      <TableCell>{vendor.category}</TableCell>
-                      <TableCell>{vendor.contact_email}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{thread?.reason || '-'}</TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </details>
-      )}
+              )
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   )
 }

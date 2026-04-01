@@ -1,5 +1,5 @@
 import { getEvent } from '@/app/actions/events'
-import { EventIntakeForm } from '@/components/event-intake-form'
+import { EventInfo } from './event-info'
 import { PAGE_CONTAINER_CLASS } from '@/lib/utils'
 import { notFound } from 'next/navigation'
 
@@ -9,7 +9,7 @@ interface EventPageProps {
 
 export default async function EventPage({ params }: EventPageProps) {
   const { id } = await params
-  
+
   let event
   try {
     event = await getEvent(id)
@@ -19,7 +19,7 @@ export default async function EventPage({ params }: EventPageProps) {
 
   return (
     <div className={PAGE_CONTAINER_CLASS}>
-      <EventIntakeForm event={event} />
+      <EventInfo event={event} />
     </div>
   )
 }

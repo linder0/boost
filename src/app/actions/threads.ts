@@ -48,6 +48,8 @@ export async function escalateThread(
     .eq('id', threadId)
     .single()
 
+  const found = ensureFound(thread, threadError, 'Thread not found')
+
   // Store human message
   await supabase.from('messages').insert({
     thread_id: threadId,
@@ -76,7 +78,7 @@ export async function escalateThread(
     },
   })
 
-  revalidatePath(`/events/${thread.vendors.event_id}/vendors`)
+  revalidatePath(`/events/${found.vendors.event_id}/vendors`)
   return { success: true }
 }
 
@@ -125,9 +127,6 @@ export async function bulkStartOutreach(eventId: string) {
   revalidatePath(`/events/${eventId}/vendors`)
   return { success: true, count: vendorList.length }
 }
-
-// Alias for semantic clarity in venue discovery flow
-export const startOutreachForEvent = bulkStartOutreach
 
 export async function startOutreachByCategory(eventId: string, category: string) {
   const { supabase, user } = await getAuthenticatedClient()
@@ -308,23 +307,4 @@ export async function bulkApproveOutreach(vendorIds: string[]) {
 
   revalidatePath(`/events/${eventId}/vendors`)
   return { success: true, count: vendorList.length }
-}
-
-/**
- * Get vendors pending approval for an event
- */
-export async function getPendingApprovalVendors(eventId: string) {
-  validateUUID(eventId, 'event ID')
-
-  const { supabase } = await getAuthenticatedClient()
-
-  const { data: vendors, error } = await supabase
-    .from('vendors')
-    .select('*, vendor_threads!inner(*)')
-    .eq('event_id', eventId)
-    .eq('vendor_threads.status', 'NOT_CONTACTED')
-    .eq('vendor_threads.outreach_approved', false)
-
-  handleSupabaseError(error, 'Failed to fetch pending vendors')
-  return vendors ?? []
 }

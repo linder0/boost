@@ -29,18 +29,13 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          scopes: 'https://www.googleapis.com/auth/gmail.modify',
           redirectTo: `${window.location.origin}/api/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
         },
       })
 
       if (error) throw error
-    } catch (error: any) {
-      setError(error.message)
+    } catch (error: unknown) {
+      setError(error instanceof Error ? error.message : 'Login failed')
       setLoading(false)
     }
   }
@@ -53,19 +48,19 @@ export default function LoginPage() {
             <span style={{ fontFamily: 'var(--font-brand)', fontWeight: 700, fontStyle: 'italic' }}>VROOM</span>
           </CardTitle>
           <CardDescription>
-            Sign in with Google to access Gmail for vendor outreach
+            Sign in to get started with vendor outreach
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button 
-            onClick={handleGoogleSignIn} 
-            className="w-full" 
+          <Button
+            onClick={handleGoogleSignIn}
+            className="w-full"
             disabled={loading}
             size="lg"
           >
             {loading ? 'Connecting to Google...' : 'Sign in with Google'}
           </Button>
-          
+
           {error && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -73,15 +68,12 @@ export default function LoginPage() {
           )}
 
           <div className="space-y-2 rounded-md bg-muted p-4 text-xs text-muted-foreground">
-            <p className="font-semibold text-foreground">Gmail permissions required:</p>
+            <p className="font-semibold text-foreground">What you get:</p>
             <ul className="list-inside list-disc space-y-1">
-              <li>Send emails on your behalf to vendors</li>
-              <li>Read vendor replies from your inbox</li>
-              <li>Auto-manage vendor communication threads</li>
+              <li>Automated vendor outreach from your own @planner.usevroom.com inbox</li>
+              <li>AI-parsed vendor replies with smart follow-ups</li>
+              <li>Real-time notifications when vendors respond</li>
             </ul>
-            <p className="mt-2">
-              Secure OAuth via Supabase with automatic token refresh
-            </p>
           </div>
         </CardContent>
       </Card>

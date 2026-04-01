@@ -1,9 +1,13 @@
 import { inngest } from '../client'
 import { createClient } from '@/lib/supabase/server'
-import { sendEmail } from '@/lib/gmail/operations'
+import { sendEmail } from '@/lib/agentmail/operations'
+import { getUserInboxId } from '@/lib/agentmail/inbox'
 import { generateFollowUp1, generateBreakupEmail, getFollowUpSubject } from '@/lib/templates/followups'
 import { normalizeJoinResult } from '@/lib/utils'
-import { storeMessage, logAutomation, updateThreadStatus } from '../utils'
+import {
+  storeMessage, logAutomation, updateThreadStatus,
+  BREAKUP_FOLLOWUP_DELAY_DAYS, daysToMs,
+} from '../utils'
 
 export const sendFollowUp = inngest.createFunction(
   {
@@ -11,8 +15,7 @@ export const sendFollowUp = inngest.createFunction(
     retries: 2,
   },
   { event: 'followup.scheduled' },
-  async (context) => {
-    const { event, step } = context
+  async ({ event, step }) => {
     const { threadId, vendorId, userId, attempt } = event.data
 
     // Check thread status - skip if vendor replied
@@ -29,6 +32,7 @@ export const sendFollowUp = inngest.createFunction(
         throw new Error(`Thread not found: ${threadId}`)
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return thread as any
     })
 
@@ -58,13 +62,20 @@ export const sendFollowUp = inngest.createFunction(
       : generateFollowUp1(eventData, vendor)
     const emailSubject = getFollowUpSubject(eventData, attempt)
 
-    // Send follow-up email
+    // Get user's AgentMail inbox
+    const inboxId = await step.run('get-inbox', async () => {
+      const id = await getUserInboxId(userId)
+      if (!id) throw new Error(`No AgentMail inbox found for user ${userId}`)
+      return id
+    })
+
+    // Send follow-up email via AgentMail
     const sentMessage = await step.run('send-followup-email', async () => {
-      return await sendEmail(userId, {
+      return await sendEmail(inboxId, {
         to: vendor.contact_email,
         subject: emailSubject,
         body: emailBody,
-        threadId: threadStatus.gmail_thread_id || undefined,
+        threadId: threadStatus.agentmail_thread_id || undefined,
       })
     })
 
@@ -76,11 +87,10 @@ export const sendFollowUp = inngest.createFunction(
         thread_id: threadId,
         sender: 'SYSTEM',
         body: emailBody,
-        gmail_message_id: sentMessage.id || null,
+        agentmail_message_id: sentMessage.id || null,
         inbound: false,
       })
 
-      // Update thread
       await updateThreadStatus(supabase, threadId, {
         follow_up_count: threadStatus.follow_up_count + 1,
         status: isBreakup ? 'REJECTED' : 'WAITING',
@@ -99,7 +109,7 @@ export const sendFollowUp = inngest.createFunction(
           attempt: attempt,
           is_breakup: isBreakup,
           subject: emailSubject,
-          gmail_message_id: sentMessage.id,
+          agentmail_message_id: sentMessage.id,
         },
       })
     })
@@ -114,7 +124,7 @@ export const sendFollowUp = inngest.createFunction(
           userId,
           attempt: 2,
         },
-        ts: Date.now() + 4 * 24 * 60 * 60 * 1000, // 4 days later (total 7 days from initial)
+        ts: Date.now() + daysToMs(BREAKUP_FOLLOWUP_DELAY_DAYS),
       })
     }
 

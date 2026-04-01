@@ -31,7 +31,7 @@ export function ProfileEditor({ initialContext }: ProfileEditorProps) {
     setSaving(true)
     setSaved(false)
     try {
-      await saveUserProfile(context)
+      await saveUserProfile({ context })
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (error) {
@@ -52,8 +52,8 @@ export function ProfileEditor({ initialContext }: ProfileEditorProps) {
         className="min-h-[400px] font-mono text-sm"
       />
       <div className="flex items-center gap-4">
-        <Button 
-          onClick={handleSave} 
+        <Button
+          onClick={handleSave}
           disabled={saving || !hasChanges}
         >
           {saving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}

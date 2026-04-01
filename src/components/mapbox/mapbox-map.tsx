@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
+import type mapboxgl from 'mapbox-gl'
 
 export interface MapMarker {
   id: string
@@ -39,9 +40,9 @@ export function MapboxMap({
   radiusMeters,
 }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<any>(null)
-  const markersRef = useRef<any[]>([])
-  const mapboxglRef = useRef<any>(null)
+  const mapRef = useRef<mapboxgl.Map | null>(null)
+  const markersRef = useRef<mapboxgl.Marker[]>([])
+  const mapboxglRef = useRef<typeof mapboxgl | null>(null)
   const [mapReady, setMapReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,15 +62,15 @@ export function MapboxMap({
         // Dynamically import mapbox-gl
         const mapboxModule = await import('mapbox-gl')
         const mapboxgl = mapboxModule.default
-        
+
         // Import CSS
         await import('mapbox-gl/dist/mapbox-gl.css')
-        
+
         if (!isMounted || !mapContainer.current) return
-        
+
         // Store reference
         mapboxglRef.current = mapboxgl
-        
+
         // Set access token
         mapboxgl.accessToken = accessToken
 
@@ -90,7 +91,7 @@ export function MapboxMap({
           }
         })
 
-        map.on('error', (e: any) => {
+        map.on('error', (e: mapboxgl.ErrorEvent & { error: Error }) => {
           const msg = e.error?.message || ''
           if (msg.includes('Not Authorized') || msg.includes('Invalid Token')) {
             setError('Invalid Mapbox token')
@@ -106,7 +107,7 @@ export function MapboxMap({
 
         // Handle click-to-set
         if (clickToSet && onMapClick) {
-          map.on('click', (e: any) => {
+          map.on('click', (e: mapboxgl.MapMouseEvent) => {
             onMapClick({
               lat: e.lngLat.lat,
               lng: e.lngLat.lng,
